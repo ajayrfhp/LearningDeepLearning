@@ -1,0 +1,7 @@
+-Look into the forward and backward phase of Dropout. You can check some numpy implementation out there									
+-Pay attention to extra scaling operation that takes place in the forward pass. Understand, why it is there.									
+-Think about how backprop works for Dropout. Any data from the forward pass needs to be stored?									
+-Think if it is a good idea to apply dropout after a convolution layer (typically dropout is applied after fc layers).[PyTorchDropout](https://pytorch.org/docs/stable/generated/torch.nn.Dropout2d.html)									
+-Look into droplayer (a.k.a, StochasticDepth) and [dropblock](understand the implementation: (https://pytorch.org/vision/stable/_modules/torchvision/ops/stochastic_depth.html#stochastic_depth); 
+example usage: https://github.com/rwightman/pytorch-image-models/blob/e98c93264cde1657b188f974dc928b9d73303b18/timm/models/rexnet.py#L98-L101"									
+-Look into how dropout can be used to derive some [prediction confidence](https://pgg1610.github.io/blog_fastpages/python/pytorch/machine-learning/2021/01/11/Simple_Dropout.html)
