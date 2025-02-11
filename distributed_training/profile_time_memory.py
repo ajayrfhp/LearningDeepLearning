@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torchvision import transforms, models
 from torch.profiler import record_function
-from torch.utils.checkpoint import checkpoint_sequential
+from torch.utils.checkpoint import checkpoint
 from datasets import load_dataset
 import time
 import numpy as np
@@ -153,12 +153,10 @@ class ResnetCheckpointed(nn.Module):
         )
         self.fc = self.model.fc
 
-        # Number of segments to split the features into for checkpointing
-        self.segments = 3
-
     def forward(self, x):
-        # Apply checkpoint_sequential to features
-        x = checkpoint_sequential(self.features, self.segments, x)
+        # Apply checkpoint to each layer in features
+        for i, layer in enumerate(self.features):
+            x = checkpoint(layer, x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
