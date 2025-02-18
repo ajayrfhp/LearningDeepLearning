@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 from torchvision import transforms, models
@@ -9,16 +8,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch.multiprocessing as mp
 import torch.distributed as dist
-from torch.utils.data.distributed import DistributedSampler 
+from torch.utils.data.distributed import DistributedSampler
 import os
 from torch.utils.checkpoint import checkpoint
+
 
 class TinyImageNet(torch.utils.data.Dataset):
     def __init__(self, dataset, transform=None):
         self.dataset = dataset
         self.transform = transform
+
     def __len__(self):
         return len(self.dataset)
+
     def __getitem__(self, idx):
         x, y = self.dataset[idx]["image"], self.dataset[idx]["label"]
         x = x.convert("RGB")
@@ -27,11 +29,12 @@ class TinyImageNet(torch.utils.data.Dataset):
         y = torch.tensor(y, dtype=torch.int64)
         return x, y
 
+
 class ResnetCheckpointed(nn.Module):
     def __init__(self):
         super(ResnetCheckpointed, self).__init__()
         self.model = models.resnet18(pretrained=True)
-        
+
         # Store individual layers
         self.conv1 = self.model.conv1
         self.bn1 = self.model.bn1
@@ -59,29 +62,46 @@ class ResnetCheckpointed(nn.Module):
         x = self.fc(x)
         return x
 
+
 def get_data(rank, world_size):
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor()
-    ])
+    transform = transforms.Compose(
+        [transforms.Resize((224, 224)), transforms.ToTensor()]
+    )
 
     tiny_imagenet = load_dataset("Maysee/tiny-imagenet", split="train")
     tiny_imagenet_torch = TinyImageNet(tiny_imagenet, transform=transform)
     num_classes = len(tiny_imagenet.features["label"].names)
 
-    train_sampler = DistributedSampler(tiny_imagenet_torch, num_replicas=world_size, rank=rank)
-    val_sampler = DistributedSampler(tiny_imagenet_torch, num_replicas=world_size, rank=rank)
-    train_loader = torch.utils.data.DataLoader(tiny_imagenet_torch, batch_size=1500, num_workers=2, sampler=train_sampler)
-    val_loader = torch.utils.data.DataLoader(tiny_imagenet_torch, batch_size=1500, num_workers=2, sampler=val_sampler)
+    train_sampler = DistributedSampler(
+        tiny_imagenet_torch, num_replicas=world_size, rank=rank
+    )
+    val_sampler = DistributedSampler(
+        tiny_imagenet_torch, num_replicas=world_size, rank=rank
+    )
+    train_loader = torch.utils.data.DataLoader(
+        tiny_imagenet_torch, batch_size=1500, num_workers=2, sampler=train_sampler
+    )
+    val_loader = torch.utils.data.DataLoader(
+        tiny_imagenet_torch, batch_size=1500, num_workers=2, sampler=val_sampler
+    )
 
     return train_loader, val_loader
 
-def fit(model, train_loader, val_loader, epochs=1, lr=0.001, break_after_num_batches=None, title="", device=0):
+
+def fit(
+    model,
+    train_loader,
+    val_loader,
+    epochs=1,
+    lr=0.001,
+    break_after_num_batches=None,
+    title="",
+    device=0,
+):
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = torch.nn.CrossEntropyLoss()
     total_times = []
-
 
     for epoch in range(epochs):
         start_time = time.time()
@@ -93,7 +113,7 @@ def fit(model, train_loader, val_loader, epochs=1, lr=0.001, break_after_num_bat
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-                
+
             end_time = time.time()
             total_times.append(end_time - start_time)
             start_time = time.time()
@@ -112,11 +132,13 @@ def fit(model, train_loader, val_loader, epochs=1, lr=0.001, break_after_num_bat
     plt.savefig(f"{device}_time.png")
     plt.show()
 
+
 def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12354'
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12354"
     torch.cuda.set_device(rank)
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
 
 def cleanup():
     dist.destroy_process_group()
@@ -126,14 +148,25 @@ def train(rank, world_size):
     setup(rank, world_size)
     model = ResnetCheckpointed()
     model.to(rank)
-    model = nn.parallel.DistributedDataParallel(model, device_ids=[rank], find_unused_parameters=True)
+    model = nn.parallel.DistributedDataParallel(
+        model, device_ids=[rank], find_unused_parameters=True
+    )
 
     train_loader, val_loader = get_data(rank, world_size)
-    fit(model, train_loader, val_loader, epochs=1, lr=0.001, break_after_num_batches=None, title=f"checkpointed_ddp_resnet_{rank}", device=rank)
+    fit(
+        model,
+        train_loader,
+        val_loader,
+        epochs=1,
+        lr=0.001,
+        break_after_num_batches=None,
+        title=f"checkpointed_ddp_resnet_{rank}",
+        device=rank,
+    )
     cleanup()
-    
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # Set seeds for reproducibility
     torch.manual_seed(710)
     np.random.seed(710)
