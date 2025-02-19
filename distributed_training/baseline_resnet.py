@@ -45,7 +45,7 @@ if __name__ == "__main__":
         epochs=args.epochs,
         lr=args.lr,
         device=device,
-        title="baseline_resnet",
+        title=f"baseline_resnet_batch_size_{args.batch_size}",
     )
 
     # get time stats
