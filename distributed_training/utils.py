@@ -36,6 +36,8 @@ def get_data(batch_size, num_workers):
     tiny_imagenet = load_dataset("Maysee/tiny-imagenet", split="train")
     tiny_imagenet_torch = TinyImageNet(tiny_imagenet, transform=transform)
 
+    print(batch_size, num_workers)
+
     train_loader = torch.utils.data.DataLoader(
         tiny_imagenet_torch, batch_size=batch_size, num_workers=num_workers
     )
@@ -122,6 +124,9 @@ def fit_profile(
                     optimizer.zero_grad()
                 end_time = time.time()
                 total_times.append(end_time - start_time)
+
+                print(batch_idx)
+
                 if (
                     break_after_num_batches is not None
                     and batch_idx >= break_after_num_batches
