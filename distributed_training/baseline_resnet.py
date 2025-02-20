@@ -1,24 +1,28 @@
 import time
 import numpy as np
 import torch
+import torch.nn as nn
 from torchvision import transforms, models
 from datasets import load_dataset
 import time
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
-from utils import TinyImageNet, fit_profile
+from utils import get_data, fit_profile
+from models import ResnetCheckpointed
 
 
 if __name__ == "__main__":
     # Setup
     args = argparse.ArgumentParser()
     args.add_argument("--batch_size", type=int, default=1500)
-    args.add_argument("--num_workers", type=int, default=2)
     args.add_argument("--epochs", type=int, default=1)
     args.add_argument("--lr", type=float, default=0.001)
+    args.add_argument("--enable_checkpointing", type=bool, default=False)
     args.add_argument("--num_gpus", type=int, default=1)
     args.add_argument("--num_steps", type=int, default=np.inf)
+    args.add_argument("--num_workers", type=int, default=2)
+    args.add_argument("--enable_data_parallel", type=bool, default=False)
 
     args = args.parse_args()
 
@@ -27,30 +31,24 @@ if __name__ == "__main__":
 
     start_time = time.time()
     # get data
-    transform = transforms.Compose(
-        [transforms.Resize((224, 224)), transforms.ToTensor()]
-    )
+    train_loader, val_loader = get_data(args.batch_size, args.num_workers)
 
-    tiny_imagenet = load_dataset("Maysee/tiny-imagenet", split="train")
-    tiny_imagenet_torch = TinyImageNet(tiny_imagenet, transform=transform)
-
-    train_loader = torch.utils.data.DataLoader(
-        tiny_imagenet_torch, batch_size=args.batch_size, num_workers=args.num_workers
-    )
-    val_loader = torch.utils.data.DataLoader(
-        tiny_imagenet_torch, batch_size=args.batch_size, num_workers=args.num_workers
-    )
-
-    # define model
-    model = models.resnet18(pretrained=False)
+    model = None
+    if args.enable_checkpointing:
+        model = ResnetCheckpointed()
+    else:
+        model = models.resnet18(pretrained=False)
 
     device = torch.device("cpu")
+
     if args.num_gpus == 1:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    model.to(device)
+    if args.enable_data_parallel:
+        device = torch.device("cuda")
+        model.to(device)
+        model = nn.DataParallel(model, device_ids=[0, 1])
 
-    # train model
     fit_profile(
         model,
         train_loader,
@@ -59,7 +57,7 @@ if __name__ == "__main__":
         lr=args.lr,
         device=device,
         num_steps=args.num_steps,
-        title=f"baseline_resnet_batch_size_{args.batch_size}",
+        title=f"baseline_resnet_batch_size_{args.batch_size}_checkpointing_{args.enable_checkpointing}_num_gpus_{args.num_gpus}_dp_{args.enable_data_parallel}",
     )
 
     # get time stats
