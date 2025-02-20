@@ -13,7 +13,7 @@ import os
 from torch.utils.checkpoint import checkpoint
 from utils import get_ddp_data, fit_profile
 from models import ResnetCheckpointed
-import argparse
+
 
 def setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
@@ -26,7 +26,7 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def train(rank, world_size, args):
+def train(rank, world_size):
     setup(rank, world_size)
     model = ResnetCheckpointed()
     model.to(rank)
@@ -39,33 +39,20 @@ def train(rank, world_size, args):
         model,
         train_loader,
         val_loader,
-        epochs=args.epochs,
-        lr=args.lr,
+        epochs=1,
+        lr=0.001,
+        title=f"checkpointed_ddp_resnet_{rank}",
         device=rank,
-        num_steps=args.num_steps,
-        title=f"baseline_resnet_batch_size_{args.batch_size}_checkpointing_{args.enable_checkpointing}_num_gpus_{args.num_gpus}_ddp",
     )
-
     cleanup()
 
 
 if __name__ == "__main__":
-    args = argparse.ArgumentParser()
-    args.add_argument("--batch_size", type=int, default=1500)
-    args.add_argument("--epochs", type=int, default=1)
-    args.add_argument("--lr", type=float, default=0.001)
-    args.add_argument("--enable_checkpointing", type=bool, default=False)
-    args.add_argument("--num_gpus", type=int, default=1)
-    args.add_argument("--num_steps", type=int, default=np.inf)
-    args.add_argument("--num_workers", type=int, default=2)
-
-    args = args.parse_args()
-
+    # Set seeds for reproducibility
     torch.manual_seed(710)
     np.random.seed(710)
 
-
     start_time = time.time()
-    mp.spawn(train, args=(2, args), nprocs=2, join=True)
+    mp.spawn(train, args=(2,), nprocs=2, join=True)
     end_time = time.time()
     print(f"Training time: {end_time - start_time} s")

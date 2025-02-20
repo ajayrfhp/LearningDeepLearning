@@ -55,21 +55,19 @@ def get_ddp_data(rank, world_size):
     tiny_imagenet_train = load_dataset("Maysee/tiny-imagenet", split="train")
     tiny_imagenet_val = load_dataset("Maysee/tiny-imagenet", split="valid")
 
-    tiny_imagenet_torch_train = TinyImageNet(tiny_imagenet_train, transform=transform)
-    tiny_imagenet_torch_val = TinyImageNet(tiny_imagenet_val, transform=transform)
-    
+    tiny_imagenet_train_torch = TinyImageNet(tiny_imagenet_train, transform=transform)
+    tiny_imagenet_val_torch = TinyImageNet(tiny_imagenet_val, transform=transform)
 
     train_sampler = DistributedSampler(
-        tiny_imagenet_torch_train, num_replicas=world_size, rank=rank
+        tiny_imagenet_train_torch, num_replicas=world_size, rank=rank
     )
-    val_sampler = DistributedSampler(
-        tiny_imagenet_torch_val, num_replicas=world_size, rank=rank
-    )
+
     train_loader = torch.utils.data.DataLoader(
-        tiny_imagenet_torch_train, batch_size=1500, sampler=train_sampler
+        tiny_imagenet_train_torch, batch_size=1500, num_workers=2, sampler=train_sampler
     )
+
     val_loader = torch.utils.data.DataLoader(
-        tiny_imagenet_torch_val, batch_size=1500, sampler=val_sampler
+        tiny_imagenet_val_torch, batch_size=1500, num_workers=2, sampler=None
     )
 
     return train_loader, val_loader
