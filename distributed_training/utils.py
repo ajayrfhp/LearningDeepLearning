@@ -28,26 +28,6 @@ class TinyImageNet(torch.utils.data.Dataset):
         return x, y
 
 
-def get_data(batch_size, num_workers):
-    transform = transforms.Compose(
-        [transforms.Resize((224, 224)), transforms.ToTensor()]
-    )
-
-    tiny_imagenet = load_dataset("Maysee/tiny-imagenet", split="train")
-    tiny_imagenet_torch = TinyImageNet(tiny_imagenet, transform=transform)
-
-    print(batch_size, num_workers)
-
-    train_loader = torch.utils.data.DataLoader(
-        tiny_imagenet_torch, batch_size=batch_size, num_workers=num_workers
-    )
-    val_loader = torch.utils.data.DataLoader(
-        tiny_imagenet_torch, batch_size=batch_size, num_workers=num_workers
-    )
-
-    return train_loader, val_loader
-
-
 def get_ddp_data(rank, world_size):
     transform = transforms.Compose(
         [transforms.Resize((224, 224)), transforms.ToTensor()]
@@ -89,7 +69,7 @@ def fit_profile(
     val_loader,
     epochs=1,
     lr=0.001,
-    break_after_num_batches=None,
+    num_steps=np.inf,
     device=0,
     title="",
 ):
@@ -127,10 +107,7 @@ def fit_profile(
 
                 print(batch_idx)
 
-                if (
-                    break_after_num_batches is not None
-                    and batch_idx >= break_after_num_batches
-                ):
+                if batch_idx >= num_steps:
                     break
                 start_time = time.time()
             model.eval()
@@ -145,6 +122,8 @@ def fit_profile(
                     val_loss += loss.item()
                     preds = outputs.argmax(dim=1, keepdim=True)
                     val_acc += preds.eq(labels.view_as(preds)).sum().item()
+                    if batch_idx >= num_steps:
+                        break
             val_loss /= len(val_loader)
             val_acc /= len(val_loader)
             print(f"epoch: {epoch}, val_loss: {val_loss}, val_acc: {val_acc}")

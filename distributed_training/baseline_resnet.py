@@ -7,7 +7,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
-from utils import get_data, fit_profile
+from utils import TinyImageNet, fit_profile
 
 
 if __name__ == "__main__":
@@ -18,6 +18,7 @@ if __name__ == "__main__":
     args.add_argument("--epochs", type=int, default=1)
     args.add_argument("--lr", type=float, default=0.001)
     args.add_argument("--num_gpus", type=int, default=1)
+    args.add_argument("--num_steps", type=int, default=np.inf)
 
     args = args.parse_args()
 
@@ -26,7 +27,19 @@ if __name__ == "__main__":
 
     start_time = time.time()
     # get data
-    train_loader, val_loader = get_data(args.batch_size, args.num_workers)
+    transform = transforms.Compose(
+        [transforms.Resize((224, 224)), transforms.ToTensor()]
+    )
+
+    tiny_imagenet = load_dataset("Maysee/tiny-imagenet", split="train")
+    tiny_imagenet_torch = TinyImageNet(tiny_imagenet, transform=transform)
+
+    train_loader = torch.utils.data.DataLoader(
+        tiny_imagenet_torch, batch_size=args.batch_size, num_workers=args.num_workers
+    )
+    val_loader = torch.utils.data.DataLoader(
+        tiny_imagenet_torch, batch_size=args.batch_size, num_workers=args.num_workers
+    )
 
     # define model
     model = models.resnet18(pretrained=False)
@@ -45,6 +58,7 @@ if __name__ == "__main__":
         epochs=args.epochs,
         lr=args.lr,
         device=device,
+        num_steps=args.num_steps,
         title=f"baseline_resnet_batch_size_{args.batch_size}",
     )
 
