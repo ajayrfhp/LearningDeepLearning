@@ -47,7 +47,7 @@ def get_data(batch_size, num_workers):
     return train_loader, val_loader
 
 
-def get_ddp_data(rank, world_size):
+def get_ddp_data(rank, world_size, batch_size=1500, num_workers=2):
     transform = transforms.Compose(
         [transforms.Resize((224, 224)), transforms.ToTensor()]
     )
@@ -63,11 +63,17 @@ def get_ddp_data(rank, world_size):
     )
 
     train_loader = torch.utils.data.DataLoader(
-        tiny_imagenet_train_torch, batch_size=1500, num_workers=2, sampler=train_sampler
+        tiny_imagenet_train_torch,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        sampler=train_sampler,
     )
 
     val_loader = torch.utils.data.DataLoader(
-        tiny_imagenet_val_torch, batch_size=1500, num_workers=2, sampler=None
+        tiny_imagenet_val_torch,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        sampler=None,
     )
 
     return train_loader, val_loader
