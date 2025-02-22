@@ -3,6 +3,7 @@
     - There are 100,000 images that need to train for 100 epochs for convergence in the dataset
     - Resnet19 architecture is used as the model
     - Time taken to train one epoch on dataset for different models is measured between baseline resnet, with gradient checkpointing, with data parallel and distributed data parallel. 
+- I'm trying to replicate this benchmark https://www.telesens.co/2019/04/04/distributed-data-parallel-training-using-pytorch-on-aws/
 - Where are the bottlenecks
     - The first observation is setting number of workers to 2 pushes bottleneck away from data loading to gpu transfers. 
     ![alt text](baseline_resnet_0_workers.png)
