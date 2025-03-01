@@ -3,11 +3,12 @@ import torch
 from torchvision import transforms, models
 from torch.utils.checkpoint import checkpoint
 
+
 class ResnetCheckpointed(nn.Module):
-    def __init__(self):
+    def __init__(self, pretrained=False):
         super(ResnetCheckpointed, self).__init__()
-        self.model = models.resnet18(pretrained=False)
-        
+        self.model = models.resnet18(pretrained=pretrained)
+
         # Store individual layers
         self.conv1 = self.model.conv1
         self.bn1 = self.model.bn1
