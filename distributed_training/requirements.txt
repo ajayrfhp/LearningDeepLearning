@@ -1,3 +1,6 @@
+torch
+torchvision
+d2l
 datasets
 matplotlib
 memory-profiler

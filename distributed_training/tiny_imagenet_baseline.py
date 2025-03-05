@@ -5,7 +5,7 @@ import torch.nn as nn
 import numpy as np
 from matplotlib import pyplot as plt
 from torchvision.transforms import transforms
-from torchvision.models import resnet18
+from models import ResnetD2l
 from torch.optim import Adam
 from torch.utils.data import DataLoader, Dataset
 from datasets import load_dataset, Image
@@ -22,66 +22,6 @@ def prepare_batch(self, batch):
     x = batch["image"]
     y = batch["label"]
     return (x.to(self.device), y.to(self.device))
-
-
-@d2l.add_to_class(d2l.Classifier)
-def validation_step(self, batch):
-    Y_hat = self(*batch[:-1])
-    val_loss = self.loss(Y_hat, batch[-1])
-    val_acc = self.accuracy(Y_hat, batch[-1])
-    self.metrics["loss"]["val"].append(val_loss.item())
-    self.metrics["accuracy"]["val"].append(val_acc.item())
-    self.plot("loss", val_loss, train=False)
-    self.plot("accuracy", val_acc, train=False)
-
-
-@d2l.add_to_class(d2l.Classifier)
-def training_step(self, batch):
-    l = self.loss(self(*batch[:-1]), batch[-1])
-    acc = self.accuracy(self(*batch[:-1]), batch[-1])
-    self.metrics["loss"]["train"].append(l.item())
-    self.metrics["accuracy"]["train"].append(acc.item())
-    self.plot("loss", l, train=True)
-    self.plot("accuracy", acc, train=True)
-    return l
-
-
-@d2l.add_to_class(d2l.Classifier)
-def display_metrics(self, num_training_batches, num_val_batches):
-    for key, value in self.metrics.items():
-        train_metric = self.get_running_mean(value["train"], num_training_batches)
-        val_metric = self.get_running_mean(value["val"], num_val_batches)
-        print(f"{key} - train: {train_metric}, val: {val_metric}")
-
-
-@d2l.add_to_class(d2l.Classifier)
-def get_running_mean(self, values, num_batches):
-    return np.mean(values[-num_batches:])
-
-
-class ResnetD2l(d2l.Classifier):
-    def __init__(self, num_classes, pretrained=False, lr=0.01):
-        super().__init__()
-        self.save_hyperparameters()
-        self.net = resnet18(pretrained=pretrained)
-        self.net.fc = nn.Linear(512, num_classes)
-        self.board = d2l.ProgressBoard()
-        self.metrics = defaultdict(
-            lambda: {"train": [], "val": [], "figure": None, "subplot": None}
-        )
-        self.figsize = (10, 5)
-
-        def init_weights(m):
-            if type(m) == nn.Linear or type(m) == nn.Conv2d:
-                nn.init.xavier_uniform_(m.weight)
-
-        self.net.apply(init_weights)
-
-    def forward(self, x):
-        return self.net(x)
-
-    def loss(self, y_hat, y):
-        return nn.CrossEntropyLoss()(y_hat, y)
 
 
 @d2l.add_to_class(d2l.ProgressBoard)
@@ -128,10 +68,9 @@ def draw(self, x, y, label, every_n=1):
     axes.set_yscale(self.yscale)
     axes.legend(plt_lines, labels)
     display.display(self.fig)
-    display.clear_output(wait=True)
-
     # Save the figure
-    d2l.plt.savefig(f"./tmp/result.png")
+    d2l.plt.savefig(f"./tmp/result_{title}.png", bbox_inches="tight")
+    display.clear_output(wait=True)
 
 
 def main():
@@ -155,4 +94,5 @@ def main():
 
 
 if __name__ == "__main__":
+    title = "Tiny ImageNet Baseline"
     main()
