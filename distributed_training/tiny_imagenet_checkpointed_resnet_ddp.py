@@ -32,6 +32,8 @@ def prepare_batch(self, batch):
 def draw(self, x, y, label, every_n=1):
     """Defined in :numref:`sec_utils`"""
     global title
+    if not ("rank=0" in title):
+        return
     Point = collections.namedtuple("Point", ["x", "y"])
     if not hasattr(self, "raw_points"):
         self.raw_points = collections.OrderedDict()
@@ -93,7 +95,7 @@ def train(
     rank, world_size, batch_size, num_workers, num_epochs, learning_rate, is_toy=False
 ):
     global title
-    title = f"Tiny ImageNet Checkpointed resnet ddp Toy={is_toy} batch_size{batch_size} num_workers{num_workers} num_epochs{num_epochs} learning_rate{learning_rate}"
+    title = f"Tiny ImageNet Checkpointed resnet ddp Toy={is_toy} batch_size{batch_size} num_workers{num_workers} num_epochs{num_epochs} learning_rate{learning_rate} rank={rank}"
     setup(rank, world_size)
     device = torch.device("cuda", rank)
 
