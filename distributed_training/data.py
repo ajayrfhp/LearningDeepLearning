@@ -52,7 +52,6 @@ class TinyImagenetD2lDDP(d2l.Module):
         dataloader = DataLoader(
             data,
             batch_size=self.batch_size,
-            shuffle=train,
             sampler=sampler,
             num_workers=self.num_workers,
         )

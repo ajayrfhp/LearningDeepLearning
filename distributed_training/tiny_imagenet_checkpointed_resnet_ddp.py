@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader, Dataset
 from datasets import load_dataset, Image
 import json
 import requests
-from data import TinyImagenetD2l
+from data import TinyImagenetD2lDDP
 import collections
 from IPython import display
 from collections import defaultdict
@@ -31,6 +31,7 @@ def prepare_batch(self, batch):
 @d2l.add_to_class(d2l.ProgressBoard)
 def draw(self, x, y, label, every_n=1):
     """Defined in :numref:`sec_utils`"""
+    global title
     Point = collections.namedtuple("Point", ["x", "y"])
     if not hasattr(self, "raw_points"):
         self.raw_points = collections.OrderedDict()
@@ -88,17 +89,21 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def train(rank, world_size, batch_size, num_workers, num_epochs, learning_rate):
+def train(
+    rank, world_size, batch_size, num_workers, num_epochs, learning_rate, is_toy=False
+):
+    global title
+    title = f"Tiny ImageNet Checkpointed resnet ddp Toy={is_toy} batch_size{batch_size} num_workers{num_workers} num_epochs{num_epochs} learning_rate{learning_rate}"
     setup(rank, world_size)
     device = torch.device("cuda", rank)
 
-    data = TinyImagenetD2l(batch_size, num_workers, is_toy=False)
+    data = TinyImagenetD2lDDP(batch_size, num_workers, is_toy=is_toy)
     num_training_batches = len(data.train_data)
     num_val_batches = len(data.val_data)
     model = ResnetD2l(num_classes=data.num_classes, pretrained=False, lr=learning_rate)
     model.to(device)
 
-    trainer = d2l.Trainer(max_epochs=num_epochs, num_gpus=1)
+    trainer = d2l.Trainer(max_epochs=num_epochs, num_gpus=world_size)
     trainer.device = device
     trainer.fit(model=model, data=data)
 
@@ -106,6 +111,8 @@ def train(rank, world_size, batch_size, num_workers, num_epochs, learning_rate):
 
     cleanup()
 
+
+title = None
 
 if __name__ == "__main__":
     torch.manual_seed(710)
@@ -118,10 +125,10 @@ if __name__ == "__main__":
     args.add_argument("--num_gpus", type=int, default=2)
     args.add_argument("--num_epochs", type=int, default=100)
     args.add_argument("--learning_rate", type=float, default=0.01)
+    args.add_argument("--is_toy", type=bool, default=False)
     args = args.parse_args()
 
     start_time = time.time()
-    title = "Tiny ImageNet Checkpointed resnet ddp"
     mp.spawn(
         train,
         args=(
@@ -130,6 +137,7 @@ if __name__ == "__main__":
             args.num_workers,
             args.num_epochs,
             args.learning_rate,
+            args.is_toy,
         ),
         nprocs=args.num_gpus,
         join=True,
