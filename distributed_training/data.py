@@ -5,10 +5,11 @@ from torch.utils.data import DataLoader
 from datasets import load_dataset
 import json
 import requests
+from torch.utils.data.distributed import DistributedSampler
 
 
-class TinyImagenetD2l(d2l.Module):
-    def __init__(self, batch_size, num_workers, is_toy=False):
+class TinyImagenetD2lDDP(d2l.Module):
+    def __init__(self, batch_size, num_workers, is_toy=False, world_size=1, rank=0):
         super().__init__()
         self.save_hyperparameters()
         self.train_data = load_dataset("Maysee/tiny-imagenet", split="train")
@@ -23,6 +24,9 @@ class TinyImagenetD2l(d2l.Module):
 
         # get number of classes
         self.num_classes = self.train_data.features["label"].num_classes
+        self.sampler = DistributedSampler(
+            self.train_data, num_replicas=world_size, rank=rank
+        )
 
     def get_toydataset(self, dataset, num_labels=2):
         dataset = dataset.filter(lambda x: x["label"] in list(range(num_labels)))
@@ -44,7 +48,14 @@ class TinyImagenetD2l(d2l.Module):
     def get_dataloader(self, train):
         data = self.train_data if train else self.val_data
         data.set_transform(self.transforms)
-        dataloader = DataLoader(data, batch_size=self.batch_size, shuffle=train)
+        sampler = self.sampler if train else None
+        dataloader = DataLoader(
+            data,
+            batch_size=self.batch_size,
+            shuffle=train,
+            sampler=sampler,
+            num_workers=self.num_workers,
+        )
         return dataloader
 
     def train_dataloader(self):

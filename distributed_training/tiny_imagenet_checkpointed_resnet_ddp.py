@@ -15,6 +15,10 @@ from data import TinyImagenetD2l
 import collections
 from IPython import display
 from collections import defaultdict
+import os
+import torch.distributed as dist
+import torch.multiprocessing as mp
+import argparse
 
 
 @d2l.add_to_class(d2l.Trainer)
@@ -69,8 +73,9 @@ def draw(self, x, y, label, every_n=1):
     axes.legend(plt_lines, labels)
     display.display(self.fig)
     # Save the figure
-    d2l.plt.savefig(f"./tmp/result_{title}.png", bbox_inches="tight")
+    d2l.plt.savefig(f"./logs/result_{title}.png", bbox_inches="tight")
     display.clear_output(wait=True)
+
 
 def setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
@@ -85,8 +90,7 @@ def cleanup():
 
 def train(rank, world_size, batch_size, num_workers, num_epochs, learning_rate):
     setup(rank, world_size)
-
-    device = d2l.try_gpu()
+    device = torch.device("cuda", rank)
 
     data = TinyImagenetD2l(batch_size, num_workers, is_toy=False)
     num_training_batches = len(data.train_data)
@@ -120,7 +124,13 @@ if __name__ == "__main__":
     title = "Tiny ImageNet Checkpointed resnet ddp"
     mp.spawn(
         train,
-        args=(args.num_gpus, args.batch_size, args.num_workers, args.num_epochs, args.learning_rate),
+        args=(
+            args.num_gpus,
+            args.batch_size,
+            args.num_workers,
+            args.num_epochs,
+            args.learning_rate,
+        ),
         nprocs=args.num_gpus,
         join=True,
     )
