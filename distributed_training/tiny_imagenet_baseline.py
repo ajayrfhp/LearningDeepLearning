@@ -69,7 +69,7 @@ def draw(self, x, y, label, every_n=1):
     axes.legend(plt_lines, labels)
     display.display(self.fig)
     # Save the figure
-    d2l.plt.savefig(f"./tmp/result_{title}.png", bbox_inches="tight")
+    d2l.plt.savefig(f"./logs/result_{title}.png", bbox_inches="tight")
     display.clear_output(wait=True)
 
 
