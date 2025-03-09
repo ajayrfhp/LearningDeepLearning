@@ -4,21 +4,15 @@ import d2l.torch as d2l
 import torch.nn as nn
 import numpy as np
 from matplotlib import pyplot as plt
-from torchvision.transforms import transforms
 from models import ResnetD2l
-from torch.optim import Adam
-from torch.utils.data import DataLoader, Dataset
-from datasets import load_dataset, Image
-import json
-import requests
 from data import TinyImagenetD2lDDP
 import collections
 from IPython import display
-from collections import defaultdict
 import os
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import argparse
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 
 @d2l.add_to_class(d2l.Trainer)
@@ -102,14 +96,22 @@ def train(
     data = TinyImagenetD2lDDP(batch_size, num_workers, is_toy=is_toy)
     num_training_batches = len(data.train_data)
     num_val_batches = len(data.val_data)
-    model = ResnetD2l(num_classes=data.num_classes, pretrained=False, lr=learning_rate)
-    model.to(device)
+    model = ResnetD2l(
+        num_classes=data.num_classes,
+        pretrained=False,
+        lr=learning_rate,
+        checkpointed=True,
+    )
+    model.net.to(rank)
+    model.net = DDP(model.net, device_ids=[rank], find_unused_parameters=True)
 
+    print(f"rank={rank} model: {model.net}")
     trainer = d2l.Trainer(max_epochs=num_epochs, num_gpus=world_size)
     trainer.device = device
     trainer.fit(model=model, data=data)
 
-    model.display_metrics(num_training_batches, num_val_batches)
+    if rank == 0:
+        model.display_metrics(num_training_batches, num_val_batches)
 
     cleanup()
 
@@ -122,12 +124,12 @@ if __name__ == "__main__":
 
     # get batchsize, num_workers from args
     args = argparse.ArgumentParser()
-    args.add_argument("--batch_size", type=int, default=1500)
+    args.add_argument("--batch_size", type=int, default=125)
     args.add_argument("--num_workers", type=int, default=2)
-    args.add_argument("--num_gpus", type=int, default=2)
-    args.add_argument("--num_epochs", type=int, default=100)
+    args.add_argument("--num_gpus", type=int, default=1)
+    args.add_argument("--num_epochs", type=int, default=2)
     args.add_argument("--learning_rate", type=float, default=0.01)
-    args.add_argument("--is_toy", type=bool, default=False)
+    args.add_argument("--is_toy", type=bool, default=True)
     args = args.parse_args()
 
     start_time = time.time()
