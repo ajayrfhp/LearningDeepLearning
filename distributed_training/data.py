@@ -9,7 +9,7 @@ from torch.utils.data.distributed import DistributedSampler
 import torchvision
 
 
-class TinyImageNet(torch.utils.data.Dataset):
+class TinyImageNetTorchPrimitive(torch.utils.data.Dataset):
     def __init__(self, dataset, transform=None):
         self.dataset = dataset
         self.transform = transform
@@ -18,44 +18,93 @@ class TinyImageNet(torch.utils.data.Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        x, y = self.dataset[idx]["image"], self.dataset[idx]["label"]
-        x = x.convert("RGB")
+        sample = self.dataset[idx]
+        image = sample["image"]
         if self.transform:
-            x = self.transform(x)
-        y = torch.tensor(y, dtype=torch.int64)
-        return x, y
+            image = self.transform(image)
+        return image, sample["label"]
 
 
-def get_ddp_data(rank, world_size, batch_size=1500, num_workers=2):
-    transform = transforms.Compose(
-        [transforms.Resize((128, 128)), transforms.ToTensor()]
-    )
+class TinyImageNetTorch:
+    def __init__(
+        self,
+        batch_size,
+        num_workers,
+        is_toy=False,
+        world_size=1,
+        rank=0,
+        is_ddp=False,
+    ):
+        super().__init__()
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.is_toy = is_toy
+        self.world_size = world_size
+        self.rank = rank
+        self.is_ddp = is_ddp
+        self.train_loader, self.val_loader, self.train_data, self.val_data = (
+            self.get_tiny_imagenet_torch_data(
+                batch_size=batch_size,
+                num_workers=num_workers,
+                is_ddp=is_ddp,
+                rank=rank,
+                world_size=world_size,
+                is_toy=is_toy,
+            )
+        )
 
-    tiny_imagenet_train = load_dataset("Maysee/tiny-imagenet", split="train")
-    tiny_imagenet_val = load_dataset("Maysee/tiny-imagenet", split="valid")
+    def get_toydataset(self, dataset, num_labels=2):
+        return dataset.filter(lambda x: x["label"] in list(range(num_labels)))
 
-    tiny_imagenet_train_torch = TinyImageNet(tiny_imagenet_train, transform=transform)
-    tiny_imagenet_val_torch = TinyImageNet(tiny_imagenet_val, transform=transform)
+    def get_tiny_imagenet_torch_data(
+        self,
+        batch_size=1500,
+        num_workers=2,
+        is_ddp=False,
+        rank=0,
+        world_size=1,
+        is_toy=False,
+    ):
+        transform = transforms.Compose(
+            [transforms.Resize((128, 128)), transforms.ToTensor()]
+        )
 
-    train_sampler = DistributedSampler(
-        tiny_imagenet_train_torch, num_replicas=world_size, rank=rank
-    )
+        tiny_imagenet_train = load_dataset("Maysee/tiny-imagenet", split="train")
+        tiny_imagenet_val = load_dataset("Maysee/tiny-imagenet", split="valid")
 
-    train_loader = torch.utils.data.DataLoader(
-        tiny_imagenet_train_torch,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        sampler=train_sampler,
-    )
+        if is_toy:
+            tiny_imagenet_train = self.get_toydataset(tiny_imagenet_train)
+            tiny_imagenet_val = self.get_toydataset(tiny_imagenet_val)
 
-    val_loader = torch.utils.data.DataLoader(
-        tiny_imagenet_val_torch,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        sampler=None,
-    )
+        tiny_imagenet_train_torch = TinyImageNetTorchPrimitive(
+            tiny_imagenet_train, transform=transform
+        )
+        tiny_imagenet_val_torch = TinyImageNetTorchPrimitive(
+            tiny_imagenet_val, transform=transform
+        )
+        sampler = None
+        if is_ddp:
+            sampler = DistributedSampler(
+                tiny_imagenet_train_torch, num_replicas=world_size, rank=rank
+            )
 
-    return train_loader, val_loader, tiny_imagenet_train, tiny_imagenet_val
+        train_loader = torch.utils.data.DataLoader(
+            tiny_imagenet_train_torch,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            sampler=sampler,
+            shuffle=(sampler is None),
+        )
+
+        val_loader = torch.utils.data.DataLoader(
+            tiny_imagenet_val_torch,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            sampler=None,
+            shuffle=False,
+        )
+
+        return train_loader, val_loader, tiny_imagenet_train, tiny_imagenet_val
 
 
 def get_mnist_data():
