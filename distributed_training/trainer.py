@@ -1,5 +1,6 @@
 import d2l.torch as d2l
 import torch
+from collections import defaultdict
 
 
 class CustomTrainer(d2l.Trainer):
@@ -51,10 +52,12 @@ class CustomTrainer(d2l.Trainer):
         for _ in range(self.max_epochs):
             self.fit_epoch()
             self.epoch += 1
-            self.model.display_metrics(self.num_train_batches, self.num_val_batches)
+            self.model.display_metrics()
 
     def fit_epoch(self):
         self.model.train()
+        self.train_batch_idx = 0  # Reset train batch index to 0 at the start of epoch
+        self.val_batch_idx = 0
         for batch in self.train_dataloader:
             batch = self.prepare_batch(batch)
             self.optimizer.zero_grad()
@@ -65,3 +68,13 @@ class CustomTrainer(d2l.Trainer):
         for batch in self.val_dataloader:
             batch = self.prepare_batch(batch)
             self.model.validation_step(batch)
+
+        # At the end of epoch, clear metrics step dictionary and reuse for next epoch
+        self.model.metrics = defaultdict(
+            lambda: {
+                "train": [],
+                "val": [],
+                "figure": None,
+                "ax": None,
+            }
+        )

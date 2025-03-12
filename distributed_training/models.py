@@ -57,10 +57,11 @@ class ResnetD2l(d2l.Classifier):
                 "val": [],
                 "figure": None,
                 "ax": None,
-                "train_current": [],
-                "val_current": [],
             }
         )
+
+        self.aggregate_metrics = []
+
         self.figsize = (10, 5)
 
         def init_weights(m):
@@ -82,6 +83,9 @@ class ResnetD2l(d2l.Classifier):
         self.trainer.val_batch_idx += 1
         self.metrics["loss"]["val"].append(val_loss.item())
         self.metrics["accuracy"]["val"].append(val_acc.item())
+        if self.trainer.train_batch_idx % self.trainer.plot_every_n_steps == 0:
+            self.update_aggregate_metrics()
+            self.update_plot()
 
     def training_step(self, batch):
         l = self.loss(self(*batch[:-1]), batch[-1])
@@ -91,51 +95,55 @@ class ResnetD2l(d2l.Classifier):
         self.metrics["accuracy"]["train"].append(acc.item())
 
         if self.trainer.train_batch_idx % self.trainer.plot_every_n_steps == 0:
-            for _, value in self.metrics.items():
-                value["train_current"].append(
-                    self.get_running_mean(
-                        value["train"], self.trainer.plot_every_n_steps
-                    )
-                )
-
-                value["val_current"].append(
-                    self.get_running_mean(value["val"], self.trainer.plot_every_n_steps)
-                )
-
-                # clear old entries in self.metrics
-                value["train"] = []
-                value["val"] = []
-
+            self.update_aggregate_metrics()
             self.update_plot()
         return l
 
-    def display_metrics(self, num_training_batches, num_val_batches):
-        for key, value in self.metrics.items():
-            train_metric = self.get_running_mean(value["train"], num_training_batches)
-            val_metric = self.get_running_mean(value["val"], num_val_batches)
-            print(f"{key} - train: {train_metric}, val: {val_metric}")
+    def update_aggregate_metrics(self):
+        # update the aggregate metrics with values from self.metrics for current_epoch
+        aggregate_metric = {}
+        for metric, value in self.metrics.items():
+            train_agg = self.get_running_mean(value["train"])
+            val_agg = self.get_running_mean(value["val"])
+            aggregate_metric[metric] = {"train": train_agg, "val": val_agg}
 
-    def get_running_mean(self, values, num_batches):
+        if len(self.aggregate_metrics) <= self.trainer.epoch:
+            self.aggregate_metrics.append(aggregate_metric)
+        else:
+            self.aggregate_metrics[self.trainer.epoch] = aggregate_metric
+
+    def display_metrics(self):
+        latest_metrics = self.aggregate_metrics[self.trainer.epoch - 1]
+        for key, value in latest_metrics.items():
+            print(f"""{key} - train: {value["train"]}, val: {value["val"]}""")
+
+    def get_running_mean(self, values, num_batches=0):
         return np.mean(values[-num_batches:])
 
     def update_plot(self):
-        for metric, values in self.metrics.items():
+
+        for metric in self.metrics.keys():
             ax = self.metrics[metric]["ax"]
             figure = self.metrics[metric]["figure"]
 
-            x_train = list(range(len(values["train"])))
-            x_val = list(range(len(values["val"])))
-
-            if figure is None:
+            if figure is None or ax is None:
                 figure, ax = d2l.plt.subplots(figsize=self.figsize)
                 self.metrics[metric]["figure"] = figure
                 self.metrics[metric]["ax"] = ax
 
+            train_values, val_values, x_values = [], [], []
+
+            # iterate over all epochs and get train and val values
+            for epoch, metric_values in enumerate(self.aggregate_metrics):
+                train_values.append(metric_values[metric]["train"])
+                val_values.append(metric_values[metric]["val"])
+                x_values.append(epoch)
+
             # Clear the current figure
             ax.clear()
-            ax.plot(x_train, values["train"], label="train")
-            ax.plot(x_val, values["val"], label="val")
-            ax.set_xlabel("num_steps")
+            ax.plot(x_values, train_values, label="train")
+            ax.plot(x_values, val_values, label="val")
+            ax.set_xlabel("num_epochs")
             ax.set_ylabel(metric)
             ax.legend()
             figure.savefig(f"./logs/{self.trainer.title}_{metric}.png")
