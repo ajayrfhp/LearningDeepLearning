@@ -34,7 +34,9 @@ def train(
     title = f"Tiny ImageNet Checkpointed resnet ddp Toy={is_toy} batch_size{batch_size} num_workers{num_workers} num_epochs{num_epochs} learning_rate{learning_rate} rank={rank}"
     setup(rank, world_size)
 
-    train_loader, val_loader, train_data, _ = get_ddp_data(rank, world_size)
+    train_loader, val_loader, train_data, _ = get_ddp_data(
+        rank, world_size, batch_size, num_workers
+    )
     model = ResnetD2l(
         num_classes=train_data.features["label"].num_classes,
         pretrained=False,

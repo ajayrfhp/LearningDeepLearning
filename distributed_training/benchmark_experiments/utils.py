@@ -132,7 +132,9 @@ def fit_profile(
                 loss = criterion(outputs, labels)
                 val_loss += loss.item()
                 preds = outputs.argmax(dim=1, keepdim=True)
-                val_acc += preds.eq(labels.view_as(preds)).sum().item()
+                val_acc += (
+                    preds.eq(labels.view_as(preds)).sum().item()
+                )  # count number of times prediction is equal to label
                 print(f"Validation batch {batch_idx}")
                 if batch_idx >= num_steps:
                     break
