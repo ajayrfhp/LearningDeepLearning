@@ -50,9 +50,16 @@ class ResnetD2l(d2l.Classifier):
         else:
             self.net = resnet18(pretrained=pretrained)
         self.net.fc = nn.Linear(512, num_classes)
-        self.board = d2l.ProgressBoard()
+
         self.metrics = defaultdict(
-            lambda: {"train": [], "val": [], "figure": None, "subplot": None}
+            lambda: {
+                "train": [],
+                "val": [],
+                "figure": None,
+                "ax": None,
+                "train_current": [],
+                "val_current": [],
+            }
         )
         self.figsize = (10, 5)
 
@@ -72,18 +79,34 @@ class ResnetD2l(d2l.Classifier):
         Y_hat = self(*batch[:-1])
         val_loss = self.loss(Y_hat, batch[-1])
         val_acc = self.accuracy(Y_hat, batch[-1])
+        self.trainer.val_batch_idx += 1
         self.metrics["loss"]["val"].append(val_loss.item())
         self.metrics["accuracy"]["val"].append(val_acc.item())
-        self.plot("loss", val_loss, train=False)
-        self.plot("accuracy", val_acc, train=False)
 
     def training_step(self, batch):
         l = self.loss(self(*batch[:-1]), batch[-1])
         acc = self.accuracy(self(*batch[:-1]), batch[-1])
+        self.trainer.train_batch_idx += 1
         self.metrics["loss"]["train"].append(l.item())
         self.metrics["accuracy"]["train"].append(acc.item())
-        self.plot("loss", l, train=True)
-        self.plot("accuracy", acc, train=True)
+
+        if self.trainer.train_batch_idx % self.trainer.plot_every_n_steps == 0:
+            for _, value in self.metrics.items():
+                value["train_current"].append(
+                    self.get_running_mean(
+                        value["train"], self.trainer.plot_every_n_steps
+                    )
+                )
+
+                value["val_current"].append(
+                    self.get_running_mean(value["val"], self.trainer.plot_every_n_steps)
+                )
+
+                # clear old entries in self.metrics
+                value["train"] = []
+                value["val"] = []
+
+            self.update_plot()
         return l
 
     def display_metrics(self, num_training_batches, num_val_batches):
@@ -94,3 +117,27 @@ class ResnetD2l(d2l.Classifier):
 
     def get_running_mean(self, values, num_batches):
         return np.mean(values[-num_batches:])
+
+    def update_plot(self):
+        for metric, values in self.metrics.items():
+            ax = self.metrics[metric]["ax"]
+            figure = self.metrics[metric]["figure"]
+
+            x_train = list(range(len(values["train"])))
+            x_val = list(range(len(values["val"])))
+
+            if figure is None:
+                figure, ax = d2l.plt.subplots(figsize=self.figsize)
+                self.metrics[metric]["figure"] = figure
+                self.metrics[metric]["ax"] = ax
+
+            # Clear the current figure
+            ax.clear()
+            ax.plot(x_train, values["train"], label="train")
+            ax.plot(x_val, values["val"], label="val")
+            ax.set_xlabel("num_steps")
+            ax.set_ylabel(metric)
+            ax.legend()
+            figure.savefig(f"./logs/{self.trainer.title}_{metric}.png")
+            figure.show()
+            d2l.plt.close(figure)

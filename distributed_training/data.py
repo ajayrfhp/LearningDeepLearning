@@ -42,7 +42,7 @@ class TinyImageNetTorch:
         self.world_size = world_size
         self.rank = rank
         self.is_ddp = is_ddp
-        self.train_loader, self.val_loader, self.train_data, self.val_data = (
+        self.train_dataloader, self.val_dataloader, self.train_data, self.val_data = (
             self.get_tiny_imagenet_torch_data(
                 batch_size=batch_size,
                 num_workers=num_workers,
@@ -52,6 +52,7 @@ class TinyImageNetTorch:
                 is_toy=is_toy,
             )
         )
+        self.get_imagenet_labels()
 
     def get_toydataset(self, dataset, num_labels=2):
         return dataset.filter(lambda x: x["label"] in list(range(num_labels)))
@@ -71,6 +72,7 @@ class TinyImageNetTorch:
 
         tiny_imagenet_train = load_dataset("Maysee/tiny-imagenet", split="train")
         tiny_imagenet_val = load_dataset("Maysee/tiny-imagenet", split="valid")
+        self.num_classes = tiny_imagenet_train.features["label"].num_classes
 
         if is_toy:
             tiny_imagenet_train = self.get_toydataset(tiny_imagenet_train)
@@ -88,7 +90,7 @@ class TinyImageNetTorch:
                 tiny_imagenet_train_torch, num_replicas=world_size, rank=rank
             )
 
-        train_loader = torch.utils.data.DataLoader(
+        train_dataloader = torch.utils.data.DataLoader(
             tiny_imagenet_train_torch,
             batch_size=batch_size,
             num_workers=num_workers,
@@ -96,7 +98,7 @@ class TinyImageNetTorch:
             shuffle=(sampler is None),
         )
 
-        val_loader = torch.utils.data.DataLoader(
+        val_dataloader = torch.utils.data.DataLoader(
             tiny_imagenet_val_torch,
             batch_size=batch_size,
             num_workers=num_workers,
@@ -104,7 +106,39 @@ class TinyImageNetTorch:
             shuffle=False,
         )
 
-        return train_loader, val_loader, tiny_imagenet_train, tiny_imagenet_val
+        return train_dataloader, val_dataloader, tiny_imagenet_train, tiny_imagenet_val
+
+    def get_imagenet_labels(self):
+        response = requests.get(
+            "https://s3.amazonaws.com/deep-learning-models/image-models/imagenet_class_index.json",
+            timeout=50,
+        )
+        imagenet_index = json.loads(response.text)
+        self.imagenet_reverse_index = {v[0]: v[1] for k, v in imagenet_index.items()}
+
+    def visualize(self, batch, max_images=16, output_path="./tmp/"):
+        images, labels = batch
+        images = images[:max_images]
+        labels = labels[:max_images]
+        images = images.permute(0, 2, 3, 1)
+        labels = labels.unsqueeze(1)
+        labels = self.train_data.features["label"].int2str(labels)
+
+        labels = [
+            (
+                self.imagenet_reverse_index[label]
+                if label in self.imagenet_reverse_index.keys()
+                else label
+            )
+            for label in labels
+        ]
+
+        for image, label in zip(images, labels):
+            random_int = torch.randint(0, 1000, (1,)).item()
+            d2l.plt.imshow(image)
+            d2l.plt.title(label)
+            d2l.plt.savefig(f"{output_path}{label}_{random_int}.png")
+            d2l.plt.show()
 
 
 def get_mnist_data():
@@ -116,10 +150,10 @@ def get_mnist_data():
         root="./data", train=False, download=True, transform=transform
     )
 
-    train_loader = torch.utils.data.DataLoader(
+    train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=1500, shuffle=True, num_workers=2
     )
-    val_loader = torch.utils.data.DataLoader(
+    val_dataloader = torch.utils.data.DataLoader(
         test_dataset, batch_size=1500, shuffle=False, num_workers=2
     )
-    return train_loader, val_loader
+    return train_dataloader, val_dataloader
