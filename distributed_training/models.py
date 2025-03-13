@@ -93,10 +93,11 @@ class ResnetD2l(d2l.Classifier):
         self.trainer.train_batch_idx += 1
         self.metrics["loss"]["train"].append(l.item())
         self.metrics["accuracy"]["train"].append(acc.item())
+        self.update_aggregate_metrics()
 
         if self.trainer.train_batch_idx % self.trainer.plot_every_n_steps == 0:
-            self.update_aggregate_metrics()
             self.update_plot()
+            self.display_metrics()
         return l
 
     def update_aggregate_metrics(self):
@@ -115,10 +116,17 @@ class ResnetD2l(d2l.Classifier):
     def display_metrics(self):
         latest_metrics = self.aggregate_metrics[self.trainer.epoch - 1]
         for key, value in latest_metrics.items():
-            print(f"""{key} - train: {value["train"]}, val: {value["val"]}""")
+            if np.isnan(value["train"]) and np.isnan(value["val"]):
+                print(
+                    f"""epoch:{self.trainer.epoch} {key} - train: {value["train"]}, val: {value["val"]}"""
+                )
+            elif value["train"] is not None:
+                print(f"""epoch:{self.trainer.epoch} {key} - train: {value["train"]}""")
 
     def get_running_mean(self, values, num_batches=0):
-        return np.mean(values[-num_batches:])
+        if len(values) == 0:
+            return np.nan
+        return np.round(np.mean(values[-num_batches:]), 2)
 
     def update_plot(self):
 

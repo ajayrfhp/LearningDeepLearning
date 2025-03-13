@@ -52,7 +52,6 @@ class CustomTrainer(d2l.Trainer):
         for _ in range(self.max_epochs):
             self.fit_epoch()
             self.epoch += 1
-            self.model.display_metrics()
 
     def fit_epoch(self):
         self.model.train()
