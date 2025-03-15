@@ -139,21 +139,3 @@ class TinyImageNetTorch:
             d2l.plt.title(label)
             d2l.plt.savefig(f"{output_path}{label}_{random_int}.png")
             d2l.plt.show()
-
-
-def get_mnist_data():
-    transform = transforms.ToTensor()
-    train_dataset = torchvision.datasets.MNIST(
-        root="./data", train=True, download=True, transform=transform
-    )
-    test_dataset = torchvision.datasets.MNIST(
-        root="./data", train=False, download=True, transform=transform
-    )
-
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=1500, shuffle=True, num_workers=2
-    )
-    val_dataloader = torch.utils.data.DataLoader(
-        test_dataset, batch_size=1500, shuffle=False, num_workers=2
-    )
-    return train_dataloader, val_dataloader

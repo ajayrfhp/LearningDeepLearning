@@ -116,11 +116,11 @@ class ResnetD2l(d2l.Classifier):
     def display_metrics(self):
         latest_metrics = self.aggregate_metrics[self.trainer.epoch - 1]
         for key, value in latest_metrics.items():
-            if np.isnan(value["train"]) and np.isnan(value["val"]):
+            if not (np.isnan(value["train"])) and not (np.isnan(value["val"])):
                 print(
                     f"""epoch:{self.trainer.epoch} {key} - train: {value["train"]}, val: {value["val"]}"""
                 )
-            elif value["train"] is not None:
+            elif not (np.isnan(value["train"])):
                 print(f"""epoch:{self.trainer.epoch} {key} - train: {value["train"]}""")
 
     def get_running_mean(self, values, num_batches=0):
@@ -155,5 +155,5 @@ class ResnetD2l(d2l.Classifier):
             ax.set_ylabel(metric)
             ax.legend()
             figure.savefig(f"./logs/{self.trainer.title}_{metric}.png")
-            figure.show()
+            # figure.show()
             d2l.plt.close(figure)
