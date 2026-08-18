@@ -36,7 +36,7 @@ ones = torch.ones((num_heads, head_dim))
 kv_cache_manager.store_token_kv("req_0", 0, ones * 0, ones * 0)
 kv_cache_manager.store_token_kv("req_0", 1, ones * 1, ones * 1)
 
-decoded_tokens = paged_attention_decode(ones * 2, "req_0", 2, kv_cache_manager)
+decoded_tokens, _ = paged_attention_decode(ones * 2, "req_0", 2, kv_cache_manager)
 
 print(decoded_tokens.shape)
 print(decoded_tokens)

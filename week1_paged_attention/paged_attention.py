@@ -26,11 +26,12 @@ def paged_attention_decode(
         - Scores = (q_t @ K_all.T) / sqrt(d_k)
         - Output = Softmax(Scores) @ V_all
     """
-    physical_locations = [
-        cache_manager.translate_position(request_id, t) for t in range(seq_len)
-    ]
-    physical_ids = physical_locations[0]
-    offsets = physical_locations[1]
+    physical_ids = []
+    offsets = []
+    for t in range(seq_len):
+        physical_id, offset = cache_manager.translate_position(request_id, t)
+        physical_ids.append(physical_id)
+        offsets.append(offset)
 
     k_all = cache_manager.kv_cache[
         physical_ids, 0, offsets
@@ -41,8 +42,6 @@ def paged_attention_decode(
 
     assert k_all.shape == (seq_len, cache_manager.num_heads, cache_manager.head_dim)
     assert v_all.shape == (seq_len, cache_manager.num_heads, cache_manager.head_dim)
-
-    print(k_all)
 
     # Scores = (q_t @ K_all.T) / sqrt(d_k)
     # (num_heads, 1, head_dim) @ (num_heads, head_dim, seq_len) = (num_heads, 1, seq_len)
@@ -71,4 +70,4 @@ def paged_attention_decode(
 
     assert outputs.shape == (cache_manager.num_heads, cache_manager.head_dim)
 
-    return outputs
+    return outputs, scores
