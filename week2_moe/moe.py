@@ -24,7 +24,7 @@ class NoisyTopKGating(nn.Module):
         
         e = self.normal_dist.sample((B, S, self.N)) 
 
-        H = W_G + e * self.softplus(W_N) # (B, S, N)
+        H = W_G #+ e * self.softplus(W_N) # (B, S, N)
         KV, KI = torch.topk(H, k=self.K, dim=-1) # (B, S, K)
 
         assert KI.shape == (B, S, self.K)

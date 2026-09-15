@@ -7,7 +7,7 @@ def fit(moe, X, target_tensor, a = 0.01, num_epochs=2):
     for _ in range(num_epochs):
         optim.zero_grad()
         pred, aux_loss = moe.forward(X)
-        loss = torch.nn.MSELoss()(pred, target_tensor)
+        loss = torch.nn.MSELoss()(pred.reshape((-1, X.shape[-1])), target_tensor.reshape((-1, X.shape[-1])))
         total_loss = loss + aux_loss * a
 
         total_loss.backward()
@@ -44,7 +44,7 @@ def test_synthetic_overfitting():
 
 
     moe = ShazeerMOE(D=D, N=N, K=K)
-    fit(moe, X, Y, num_epochs=100, a = 0)
+    fit(moe, X, Y, num_epochs=1000, a = 0)
 
     print(X[0][0])
     print(Y[0])
