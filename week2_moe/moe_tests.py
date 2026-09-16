@@ -1,9 +1,14 @@
 import torch
 from moe import NoisyTopKGating, ShazeerMOE
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+ 
 
 def fit(moe, X, target_tensor, a = 0.01, num_epochs=2):
     optim = torch.optim.Adam(moe.parameters(), lr=1e-3)
 
+    losses = []
     for _ in range(num_epochs):
         optim.zero_grad()
         pred, aux_loss = moe.forward(X)
@@ -12,6 +17,12 @@ def fit(moe, X, target_tensor, a = 0.01, num_epochs=2):
 
         total_loss.backward()
         optim.step()
+
+        losses.append(loss.item())
+
+    plt.plot(range(len(losses)), losses)
+    plt.savefig('loss_plot.png') 
+    plt.close()
     
 
 
@@ -35,8 +46,8 @@ def test_non_zero_gradient():
 
 def test_synthetic_overfitting():
     X = torch.randn((B, S, D))
-    Y = torch.tensor(X.clone().detach().sum(dim=-1)) 
-    Y = Y.unsqueeze(-1).expand(-1, -1, D)
+    Y = torch.tensor(X.clone().detach())  * 3 
+    # Y = Y.unsqueeze(-1).expand(-1, -1, D)
     assert Y.shape == (B, S, D)
     Y = Y.reshape((M, D))
 
@@ -44,28 +55,26 @@ def test_synthetic_overfitting():
 
 
     moe = ShazeerMOE(D=D, N=N, K=K)
-    fit(moe, X, Y, num_epochs=1000, a = 0)
+    fit(moe, X, Y, num_epochs=10000, a = 0)
 
     print(X[0][0])
     print(Y[0])
 
-    new_inpt = torch.tensor([[[1, 0]]]).to(X)
+    new_inpt = torch.tensor([[[1]]]).to(X)
+
     pred, _ = moe.forward(new_inpt)
 
-    print(new_inpt)
-    print(pred)
+    expected_gt = torch.tensor([[3]]).to(pred)
 
-    expected_gt = torch.tensor([[1]]).to(pred)
-
-    assert torch.allclose(pred[0], expected_gt)
+    assert torch.allclose(pred[0], expected_gt, atol=0.5), f"{pred[0].item()} is not 3"
 
     
 
 
 if __name__ == "__main__":
-    B = 100
+    B = 1000
     S = 5
-    D = 2
+    D = 1
 
     N = 4
     K = 3

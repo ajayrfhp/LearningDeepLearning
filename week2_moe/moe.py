@@ -17,6 +17,7 @@ class NoisyTopKGating(nn.Module):
     def forward(self, X:torch.tensor): # (B, S, D)
         (B, S, D) = X.shape
         K, N = self.K, self.N
+
         W_G = X @ self.W_G # (B, S, D) @ (D, N) = (B, S, N)
         W_N = X @ self.W_N
 
