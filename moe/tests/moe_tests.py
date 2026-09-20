@@ -4,6 +4,7 @@ import sys, os
 sys.path.append(os.path.dirname(__file__) + "/../src")
 
 from shazeer_moe import NoisyTopKGating, ShazeerMOE
+import gmm_dataset
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
@@ -92,6 +93,8 @@ def test_router_collapse():
         print(f"{aux_loss_penalty} router sum {router_sums}")
 
 
+def test_gmm_fit():
+    dataloader = gmm_dataset.generate_dataset(M, D, E, batch_size=M)
 
 
 if __name__ == "__main__":
@@ -103,6 +106,6 @@ if __name__ == "__main__":
     K = 3
     M = B * S
 
-    test_non_zero_gradient()
-    test_synthetic_overfitting()
-    test_router_collapse()
+    # test_non_zero_gradient()
+    # test_synthetic_overfitting()
+    # test_router_collapse()
