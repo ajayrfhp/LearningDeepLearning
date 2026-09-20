@@ -10,6 +10,40 @@ matplotlib.use('Agg')
 from matplotlib import pyplot as plt
  
 
+def fit_batch(moe, train_dataloader, test_dataloader, a = 0.01, num_epochs=2):
+    optim = torch.optim.Adam(moe.parameters(), lr=1e-3)
+
+    losses = []
+    for _ in range(num_epochs):
+        for (X, target_tensor) in train_dataloader:
+            optim.zero_grad()
+            pred, aux_loss = moe.forward(X)
+            loss = torch.nn.MSELoss()(pred.reshape((-1, X.shape[-1])), target_tensor.reshape((-1, X.shape[-1])))
+            total_loss = loss + aux_loss * a
+
+            total_loss.backward()
+            optim.step()
+
+            losses.append(loss.item())
+
+    correct = 0 
+    total = 0
+    for (X_test, Y_test) in test_dataloader:
+        preds = moe.forward(X_test)
+        assert preds.shape == (M, D_out)
+        preds = preds.argmax(dim=-1)
+        batch_correct = (preds == Y_test).sum()
+        correct += batch_correct
+        total += X_test.shape[0]
+
+    acc = correct / total 
+    print(f"acc {acc}")
+
+
+    plt.plot(range(len(losses)), losses)
+    plt.savefig('loss_plot.png') 
+    plt.close()
+
 def fit(moe, X, target_tensor, a = 0.01, num_epochs=2):
     optim = torch.optim.Adam(moe.parameters(), lr=1e-3)
 
@@ -94,13 +128,16 @@ def test_router_collapse():
 
 
 def test_gmm_fit():
-    dataloader = gmm_dataset.generate_dataset(M, D, E, batch_size=M)
+    moe = ShazeerMOE(DD_in=D_in, N=N, K=K)
+    train_dataloader, test_datalaoder = gmm_dataset.generate_dataset(M, DD_in, N, batch_size=B)
+    fit_batch(moe, train_dataloader, test_dataloader)
 
 
 if __name__ == "__main__":
     B = 1000
     S = 5
-    D = 1
+    D_in = 2
+    D_out = 4
 
     N = 4
     K = 3
@@ -109,3 +146,4 @@ if __name__ == "__main__":
     # test_non_zero_gradient()
     # test_synthetic_overfitting()
     # test_router_collapse()
+    test_gmm_fit()
