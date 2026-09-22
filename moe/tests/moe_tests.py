@@ -10,7 +10,7 @@ matplotlib.use('Agg')
 from matplotlib import pyplot as plt
  
 
-def fit_batch(moe, train_dataloader, test_dataloader, a = 0.01, num_epochs=2):
+def fit_batch(moe, train_dataloader, test_dataloader, criterion, a = 0.01, num_epochs=2):
     optim = torch.optim.Adam(moe.parameters(), lr=1e-3)
 
     losses = []
@@ -18,7 +18,7 @@ def fit_batch(moe, train_dataloader, test_dataloader, a = 0.01, num_epochs=2):
         for (X, target_tensor) in train_dataloader:
             optim.zero_grad()
             pred, aux_loss = moe.forward(X)
-            loss = torch.nn.MSELoss()(pred.reshape((-1, X.shape[-1])), target_tensor.reshape((-1, X.shape[-1])))
+            loss = criterion(pred.reshape((-1, X.shape[-1])), target_tensor.reshape((-1, X.shape[-1])))
             total_loss = loss + aux_loss * a
 
             total_loss.backward()
@@ -128,9 +128,10 @@ def test_router_collapse():
 
 
 def test_gmm_fit():
-    moe = ShazeerMOE(DD_in=D_in, N=N, K=K)
-    train_dataloader, test_datalaoder = gmm_dataset.generate_dataset(M, DD_in, N, batch_size=B)
-    fit_batch(moe, train_dataloader, test_dataloader)
+    moe = ShazeerMOE(D_in=D_in, N=N, K=K)
+    train_dataloader, test_dataloader = gmm_dataset.generate_dataset(M, D_in, N, batch_size=B)
+    criterion = torch.nn.CrossEntropyLoss()
+    fit_batch(moe, train_dataloader, test_dataloader, criterion)
 
 
 if __name__ == "__main__":
