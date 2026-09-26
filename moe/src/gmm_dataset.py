@@ -8,7 +8,7 @@ from torch.utils.data import TensorDataset, DataLoader
 
 def generate_dataset(M, D, N, batch_size, test_size=0.2):
 
-    means = np.random.rand(N) * 100
+    means = np.random.rand(N) * 10000
     variances = np.random.rand(N) * 3
 
 
@@ -40,12 +40,12 @@ def generate_dataset(M, D, N, batch_size, test_size=0.2):
 
     plt.scatter(X[:,0], X[:,1], c=Y)
     plt.savefig('gmm_dataset.png') 
-    plt.show()
+    plt.clf()
 
-    train_dataset = TensorDataset(X_train, Y_train)
+    train_dataset = TensorDataset(X_train.to(torch.float), Y_train.to(torch.long))
     train_dataloader = DataLoader(train_dataset, batch_size, shuffle=True)
 
-    test_dataset = TensorDataset(X_test, Y_test)
+    test_dataset = TensorDataset(X_test.to(torch.float), Y_test.to(torch.long))
     test_dataloader = DataLoader(test_dataset, batch_size)
 
     return train_dataloader, test_dataloader

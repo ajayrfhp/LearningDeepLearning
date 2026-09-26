@@ -4,45 +4,61 @@ import sys, os
 sys.path.append(os.path.dirname(__file__) + "/../src")
 
 from shazeer_moe import NoisyTopKGating, ShazeerMOE
+from simple_dnn import SimpleDNN
 import gmm_dataset
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
  
 
-def fit_batch(moe, train_dataloader, test_dataloader, criterion, a = 0.01, num_epochs=2):
-    optim = torch.optim.Adam(moe.parameters(), lr=1e-3)
+def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_epochs=2, a=1):
+    optim = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     losses = []
-    for _ in range(num_epochs):
+    
+    for i in range(num_epochs):
+        model.train()
         for (X, target_tensor) in train_dataloader:
             optim.zero_grad()
-            pred, aux_loss = moe.forward(X)
-            loss = criterion(pred.reshape((-1, X.shape[-1])), target_tensor.reshape((-1, X.shape[-1])))
-            total_loss = loss + aux_loss * a
-
-            total_loss.backward()
+            aux_loss = 0
+            if isinstance(model, ShazeerMOE):
+                pred, aux_loss = model.forward(X)
+            else:
+                pred = model.forward(X)
+            loss = criterion(pred, target_tensor) + a * aux_loss
+            loss.backward()
             optim.step()
 
+            if isinstance(model, SimpleDNN):
+                weight0 = model.net[0].weight
+                weightlast = model.net[-1].weight
+                # print(f"weight 0 norm {weight0.norm()} gradweight0 norm {weight0.grad.norm()}")
+                # print(f"weight last norm {weightlast.norm()} gradweightlast norm {weightlast.grad.norm()}")
+            # print(f"loss {loss.item()}")
+            
             losses.append(loss.item())
 
-    correct = 0 
-    total = 0
-    for (X_test, Y_test) in test_dataloader:
-        preds = moe.forward(X_test)
-        assert preds.shape == (M, D_out)
-        preds = preds.argmax(dim=-1)
-        batch_correct = (preds == Y_test).sum()
-        correct += batch_correct
-        total += X_test.shape[0]
+        model.eval()
+        correct = 0 
+        total = 0
+        for (X_test, Y_test) in test_dataloader:
+            if isinstance(model, ShazeerMOE):
+                preds, _ = model.forward(X_test)
+            else:
+                preds = model.forward(X_test)
+            assert preds.shape == (X_test.shape[0], D_out), f"shape of preds {preds.shape}, is not {X_test} * {D_out}"
+            preds = preds.argmax(dim=-1)
+            batch_correct = (preds == Y_test).sum()
+            correct += batch_correct
+            total += X_test.shape[0]
 
-    acc = correct / total 
-    print(f"acc {acc}")
+        acc = correct / total 
+        print(f"Epoch {i} acc {acc}")
 
 
     plt.plot(range(len(losses)), losses)
-    plt.savefig('loss_plot.png') 
-    plt.close()
+    plt.savefig(f'{model.__class__.__name__}.loss_plot.png') 
+    plt.clf()
 
 def fit(moe, X, target_tensor, a = 0.01, num_epochs=2):
     optim = torch.optim.Adam(moe.parameters(), lr=1e-3)
@@ -51,7 +67,7 @@ def fit(moe, X, target_tensor, a = 0.01, num_epochs=2):
     for _ in range(num_epochs):
         optim.zero_grad()
         pred, aux_loss = moe.forward(X)
-        loss = torch.nn.MSELoss()(pred.reshape((-1, X.shape[-1])), target_tensor.reshape((-1, X.shape[-1])))
+        loss = torch.nn.MSELoss()(pred, target_tensor)
         total_loss = loss + aux_loss * a
 
         total_loss.backward()
@@ -61,15 +77,15 @@ def fit(moe, X, target_tensor, a = 0.01, num_epochs=2):
 
     plt.plot(range(len(losses)), losses)
     plt.savefig('loss_plot.png') 
-    plt.close()
+    plt.clf()
     
 
 
 def test_non_zero_gradient():
-    moe = ShazeerMOE(D=D, N=N, K=K)
+    moe = ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K)
 
-    X = torch.randn((B, S, D))
-    Y = torch.randn((M, D))
+    X = torch.randn((B, S, D_in))
+    Y = torch.randn((M, D_out))
 
     fit(moe, X, Y)
 
@@ -128,14 +144,18 @@ def test_router_collapse():
 
 
 def test_gmm_fit():
-    moe = ShazeerMOE(D_in=D_in, N=N, K=K)
-    train_dataloader, test_dataloader = gmm_dataset.generate_dataset(M, D_in, N, batch_size=B)
-    criterion = torch.nn.CrossEntropyLoss()
-    fit_batch(moe, train_dataloader, test_dataloader, criterion)
+    models = [
+        SimpleDNN(D=D_in,N=N, H=100),
+        ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K),
+    ]
+    for model in models:
+        train_dataloader, test_dataloader = gmm_dataset.generate_dataset(M, D_in, N, batch_size=1000)
+        criterion = torch.nn.CrossEntropyLoss()
+        fit_batch(model, train_dataloader, test_dataloader, criterion, D_out=N, num_epochs=25)
 
 
 if __name__ == "__main__":
-    B = 1000
+    B = 10000
     S = 5
     D_in = 2
     D_out = 4
@@ -144,7 +164,7 @@ if __name__ == "__main__":
     K = 3
     M = B * S
 
-    # test_non_zero_gradient()
+    test_non_zero_gradient()
     # test_synthetic_overfitting()
     # test_router_collapse()
     test_gmm_fit()

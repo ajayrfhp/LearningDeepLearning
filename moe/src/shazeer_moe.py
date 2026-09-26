@@ -53,7 +53,9 @@ class NoisyTopKGating(nn.Module):
 
         assert D.shape == (B, S, self.N)
 
-        f = self.normal_dist.cdf(D).mean(dim=(0, 1))
+        D_clamped = torch.nan_to_num(torch.clamp(D, min=-10, max=10), posinf=10.0, neginf=-10.0)
+
+        f = self.normal_dist.cdf(D_clamped).mean(dim=(0, 1))
 
         assert f.shape == (self.N, )
 
@@ -74,6 +76,8 @@ class ShazeerMOE(nn.Module):
         self.noisy_gating = NoisyTopKGating(D_in, N, K)
 
     def forward(self, X):
+        if len(X.shape) == 2:
+            X = X.unsqueeze(dim=1)
         B, S, D_in = X.shape
         M = B * S
         K, N, D_out = self.K, self.N, self.D_out
