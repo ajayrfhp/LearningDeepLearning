@@ -87,7 +87,6 @@ class ShazeerMOE(nn.Module):
             torch.nn.LazyBatchNorm1d(),
             torch.nn.ReLU(),
             torch.nn.Linear(H, D_out),
-            torch.nn.LazyBatchNorm1d(),
             )
 
         self.noisy_gating = NoisyTopKGating(D_in, N, K)
@@ -101,7 +100,6 @@ class ShazeerMOE(nn.Module):
         B, S, D_in = X.shape
         M = B * S
         K, N, D_out, H = self.K, self.N, self.D_out, self.H
-
         G, aux_loss, KI = self.noisy_gating(X)
         X = X.reshape((M, D_in))
 

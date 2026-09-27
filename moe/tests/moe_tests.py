@@ -10,16 +10,15 @@ import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 from torchinfo import summary
- 
+import wandb 
 
 def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_epochs=2, a=1):
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     losses = []
+    aux_losses = []
     if torch.cuda.is_available():
         model.to("cuda")
-
-    print(f"Model summary {model.__class__.__name__} {summary(model, input_size=(1, 2))}")
     
     for i in range(num_epochs):
         model.train()
@@ -50,6 +49,7 @@ def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_ep
                 expert_weight = model.experts
                 # print(f"expert weight {expert_weight.norm()} gradexpert norm {expert_weight.grad.norm()}")
             
+            aux_losses.append(aux_loss)
             losses.append(loss.item())
 
         model.eval()
@@ -70,12 +70,14 @@ def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_ep
             correct += batch_correct
             total += X_test.shape[0]
 
+        model_name = {model.__class__.__name__}
         acc = correct / total 
+        wandb.log({f"epoch" : i, f"acc" : acc, f"train_loss" : sum(losses) / len(losses), "aux_loss" : sum(aux_losses) / len(aux_losses)})
         print(f"Epoch {i} acc {acc}")
 
 
     plt.plot(range(len(losses)), losses)
-    plt.savefig(f'{model.__class__.__name__}.loss_plot.png') 
+    plt.savefig(f'{model_name}.loss_plot.png') 
     plt.clf()
 
 def fit(moe, X, target_tensor, a = 0.01, num_epochs=2):
@@ -176,10 +178,15 @@ def test_gmm_fit():
         SimpleDNN(D=D_in,N=N, H=100),
         ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H),
     ]
+
     for model in models:
         train_dataloader, test_dataloader = gmm_dataset.generate_dataset(M, D_in, N, batch_size=1000)
         criterion = torch.nn.CrossEntropyLoss()
-        fit_batch(model, train_dataloader, test_dataloader, criterion, D_out=N, num_epochs=25)
+        model_name = model.__class__.__name__
+        wandb.init(project=f"moe_benchmark", name=model_name, config=config, reinit=True)
+        print(f"Model summary {model.__class__.__name__} {summary(model, input_size=(1, 2))}")
+        wandb.watch(model, log="all", log_freq=100)
+        fit_batch(model, train_dataloader, test_dataloader, criterion, D_out=N, num_epochs=25, a=0.25)
 
 
 if __name__ == "__main__":
@@ -192,6 +199,13 @@ if __name__ == "__main__":
     N = 4
     K = 3
     M = B * S
+    config = {
+        "B" : B,
+        "H" : H,
+        "N" : N,
+        "K" : K 
+    }
+
 
     test_non_zero_gradient()
     # test_synthetic_overfitting()
