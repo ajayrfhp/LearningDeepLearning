@@ -4,17 +4,24 @@ import torch.nn as nn
 class NoisyTopKGating(nn.Module):
     def __init__(self, D_in, N, K):
         super(NoisyTopKGating, self).__init__()
+        self.norm = torch.nn.LazyBatchNorm1d()
         self.W_G = torch.nn.Parameter(torch.randn((D_in, N)))
         self.W_N = torch.nn.Parameter(torch.randn((D_in, N)))
-        self.normal_dist = torch.distributions.Normal(loc=0, scale=1)
         self.softplus = nn.Softplus()
 
         self.D_in = D_in
         self.N = N 
         self.K = K
 
+        self.register_buffer("loc", torch.tensor(0.0))
+        self.register_buffer("scale", torch.tensor(1.0))
+
+    @property
+    def normal_dist(self):
+        return torch.distributions.Normal(loc=self.loc, scale=self.scale)
 
     def forward(self, X:torch.tensor): # (B, S, D)
+        X = self.norm(X)
         (B, S, D_in) = X.shape
         K, N = self.K, self.N
 
@@ -37,6 +44,8 @@ class NoisyTopKGating(nn.Module):
 
         # construct G_N (B, S, N) from G (B, S, K) and KI (B, S, N) where KI are indices. Torch.scatter will help here. 
         G_N = torch.zeros((B, S, N), dtype=G.dtype)
+        if torch.cuda.is_available():
+            G_N = G_N.to("cuda")
         G_N.scatter_(dim=2, index=KI, src=G)
 
         assert G_N.shape == (B, S, N)
@@ -64,23 +73,34 @@ class NoisyTopKGating(nn.Module):
         return G, aux_loss, KI     
 
 class ShazeerMOE(nn.Module):
-    def __init__(self, D_in, D_out, N, K):
+    def __init__(self, D_in, D_out, N, K, H):
         super(ShazeerMOE, self).__init__()
         self.D_in = D_in
         self.D_out = D_out
         self.N = N 
         self.K = K
+        self.H = H
         
-        self.experts = nn.Parameter(torch.randn((N, D_in, D_out), requires_grad=True))
+        self.experts = nn.Parameter(torch.randn((N, D_in, H), requires_grad=True))
+        self.fc = torch.nn.Sequential(
+            torch.nn.Linear(H, H),
+            torch.nn.LazyBatchNorm1d(),
+            torch.nn.ReLU(),
+            torch.nn.Linear(H, D_out),
+            torch.nn.LazyBatchNorm1d(),
+            )
 
         self.noisy_gating = NoisyTopKGating(D_in, N, K)
+        if torch.cuda.is_available():
+            self.noisy_gating.to("cuda")
+            self.experts.to("cuda")
 
     def forward(self, X):
         if len(X.shape) == 2:
             X = X.unsqueeze(dim=1)
         B, S, D_in = X.shape
         M = B * S
-        K, N, D_out = self.K, self.N, self.D_out
+        K, N, D_out, H = self.K, self.N, self.D_out, self.H
 
         G, aux_loss, KI = self.noisy_gating(X)
         X = X.reshape((M, D_in))
@@ -97,7 +117,7 @@ class ShazeerMOE(nn.Module):
 
         # N gets replaced with M, K 
 
-        assert EK.shape == (M, K, D_in, D_out)
+        assert EK.shape == (M, K, D_in, H)
 
         XK = X.unsqueeze(dim=1).expand(-1, K, D_in)
 
@@ -105,6 +125,6 @@ class ShazeerMOE(nn.Module):
 
         Y = torch.einsum("mkd,mkde,mk->me", XK, EK, G)
 
-        assert Y.shape == (M, D_out)
+        assert Y.shape == (M, H)
 
-        return Y, aux_loss
+        return self.fc(torch.nn.ReLU()(Y)), aux_loss
