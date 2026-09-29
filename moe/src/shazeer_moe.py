@@ -1,13 +1,14 @@
 import torch 
 import torch.nn as nn
 import wandb
+import math
 
 class NoisyTopKGating(nn.Module):
     def __init__(self, D_in, N, K, magic=0):
         super(NoisyTopKGating, self).__init__()
-        self.norm = torch.nn.LazyBatchNorm1d()
-        self.W_G = torch.nn.Parameter(torch.randn((D_in, N)))
-        self.W_N = torch.nn.Parameter(torch.randn((D_in, N)))
+        self.norm = torch.nn.LayerNorm(D_in)
+        self.W_G = torch.nn.Parameter(torch.randn((D_in, N))/ math.sqrt(D_in))
+        self.W_N = torch.nn.Parameter(torch.randn((D_in, N))/ math.sqrt(D_in))
         self.softplus = nn.Softplus()
         self.magic = magic
 
@@ -33,9 +34,7 @@ class NoisyTopKGating(nn.Module):
 
         assert W_G.shape == (B, S, self.N)
         
-        e = self.normal_dist.rsample((B, S, self.N)) 
-        if e.requires_grad:
-            e.register_hook(lambda grad : self.gradient_cache.update({"e_grad" : grad.norm().item()}))
+        e = self.normal_dist.sample((B, S, self.N)) 
 
         H = W_G + e * self.softplus(W_N) # (B, S, N)
         if H.requires_grad:
@@ -53,10 +52,8 @@ class NoisyTopKGating(nn.Module):
             G.register_hook(lambda grad : self.gradient_cache.update({"G_grad" : grad.norm().item()}))
 
         # construct G_N (B, S, N) from G (B, S, K) and KI (B, S, N) where KI are indices. Torch.scatter will help here. 
-        G_N = torch.zeros((B, S, N), dtype=G.dtype)
-        if torch.cuda.is_available():
-            G_N = G_N.to("cuda")
-        G_N.scatter_(dim=2, index=KI, src=G)
+        G_N = torch.zeros((B, S, N), dtype=G.dtype, device=G.device)
+        G_N = G_N.scatter(dim=2, index=KI, src=G)
 
         assert G_N.shape == (B, S, N)
 
