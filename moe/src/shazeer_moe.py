@@ -1,13 +1,15 @@
 import torch 
 import torch.nn as nn
+import wandb
 
 class NoisyTopKGating(nn.Module):
-    def __init__(self, D_in, N, K):
+    def __init__(self, D_in, N, K, magic=0):
         super(NoisyTopKGating, self).__init__()
         self.norm = torch.nn.LazyBatchNorm1d()
         self.W_G = torch.nn.Parameter(torch.randn((D_in, N)))
         self.W_N = torch.nn.Parameter(torch.randn((D_in, N)))
         self.softplus = nn.Softplus()
+        self.magic = magic
 
         self.D_in = D_in
         self.N = N 
@@ -15,6 +17,7 @@ class NoisyTopKGating(nn.Module):
 
         self.register_buffer("loc", torch.tensor(0.0))
         self.register_buffer("scale", torch.tensor(1.0))
+        self.gradient_cache = {}
 
     @property
     def normal_dist(self):
@@ -30,9 +33,13 @@ class NoisyTopKGating(nn.Module):
 
         assert W_G.shape == (B, S, self.N)
         
-        e = self.normal_dist.sample((B, S, self.N)) 
+        e = self.normal_dist.rsample((B, S, self.N)) 
+        if e.requires_grad:
+            e.register_hook(lambda grad : self.gradient_cache.update({"e_grad" : grad.norm().item()}))
 
         H = W_G + e * self.softplus(W_N) # (B, S, N)
+        if H.requires_grad:
+            H.register_hook(lambda grad : self.gradient_cache.update({"H_grad" : grad.norm().item()}))
         KV, KI = torch.topk(H, k=self.K, dim=-1) # (B, S, K)
 
         assert KI.shape == (B, S, self.K)
@@ -41,6 +48,9 @@ class NoisyTopKGating(nn.Module):
         G = nn.Softmax(dim=-1)(KV)
 
         assert G.shape == (B, S, K)
+
+        if G.requires_grad:
+            G.register_hook(lambda grad : self.gradient_cache.update({"G_grad" : grad.norm().item()}))
 
         # construct G_N (B, S, N) from G (B, S, K) and KI (B, S, N) where KI are indices. Torch.scatter will help here. 
         G_N = torch.zeros((B, S, N), dtype=G.dtype)
@@ -59,14 +69,17 @@ class NoisyTopKGating(nn.Module):
         assert threshold_logit.shape == (B, S, 1)
 
         D = (W_G - threshold_logit) / self.softplus(W_N)
-
         assert D.shape == (B, S, self.N)
 
         D_clamped = torch.nan_to_num(torch.clamp(D, min=-10, max=10), posinf=10.0, neginf=-10.0)
 
-        f = self.normal_dist.cdf(D_clamped).mean(dim=(0, 1))
+        if D.requires_grad:
+            D.register_hook(lambda grad : self.gradient_cache.update({"D_grad" : grad.norm().item()}))
 
+        f = self.normal_dist.cdf(D_clamped).mean(dim=(0, 1))
         assert f.shape == (self.N, )
+        if f.requires_grad:
+            f.register_hook(lambda grad : self.gradient_cache.update({"F_grad" : grad.norm().item()}))
 
         aux_loss = torch.sum(f * probs)
 

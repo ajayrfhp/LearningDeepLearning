@@ -48,7 +48,9 @@ def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_ep
             if isinstance(model, ShazeerMOE):
                 expert_weight = model.experts
                 # print(f"expert weight {expert_weight.norm()} gradexpert norm {expert_weight.grad.norm()}")
-            
+                for (k, v) in model.noisy_gating.gradient_cache.items():
+                    wandb.log({k : v})
+
             aux_losses.append(aux_loss)
             losses.append(loss.item())
 
