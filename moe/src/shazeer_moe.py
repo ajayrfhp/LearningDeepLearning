@@ -4,13 +4,12 @@ import wandb
 import math
 
 class NoisyTopKGating(nn.Module):
-    def __init__(self, D_in, N, K, magic=0):
+    def __init__(self, D_in, N, K):
         super(NoisyTopKGating, self).__init__()
         self.norm = torch.nn.LayerNorm(D_in)
         self.W_G = torch.nn.Parameter(torch.randn((D_in, N))/ math.sqrt(D_in))
         self.W_N = torch.nn.Parameter(torch.randn((D_in, N))/ math.sqrt(D_in))
         self.softplus = nn.Softplus()
-        self.magic = magic
 
         self.D_in = D_in
         self.N = N 
@@ -134,5 +133,14 @@ class ShazeerMOE(nn.Module):
         Y = torch.einsum("mkd,mkde,mk->me", XK, EK, G)
 
         assert Y.shape == (M, H)
+
+        expert_counts = torch.bincount(KI.reshape(-1), minlength=self.N).float()
+        mean_load = expert_counts.mean()
+        std_load = expert_counts.std()
+        cv = (std_load / (mean_load + 1e-8)).item()
+        if wandb.run:
+            wandb.log({
+                        "throughput/expert_load_cv": cv,  # Closer to 0 = perfect hardware throughput
+            })
 
         return self.fc(torch.nn.ReLU()(Y)), aux_loss

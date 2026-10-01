@@ -59,7 +59,12 @@ To test if the model learns, avoids router collapse, and spreads auxiliary loss 
 * Train a single-layer `ShazeerMoE` for 50 steps using AdamW ($lr=1e-3$).
 * **Assertion:** Assert training loss drops below $0.05$, proving the sparse routing pipeline can optimize weights.
 
-### Test 3: Anti-Router Collapse & Aux Loss Stress Test (Execution time: ~30 seconds)
+### Test 3 : GMM test
+- Create a dataset from O gaussian mixture models, where O <= k. The network should be able to learn and each expert should ideally pick one cluster to learn from when load balanced
+- Coefficient of variation in the routing layer is lowest when a soft penalty of 0.1 is compared to not applying at all. This shows stuff is working. With higher penalties, there is more variation in weights, oscillating indicating a sweetspot
+![Shazeer MoE CV](./tests/shazeer_moe_cv.png)
+
+### Test 4: Anti-Router Collapse & Aux Loss Stress Test (Execution time: ~30 seconds)
 * Initialize $W_{\text{gate}}$ with heavy manual bias toward Expert 0 ($W_{\text{gate}}[0] = +10.0$) to simulate instant router collapse.
 * Run two parallel 50-step synthetic training loops:
   * **Run A:** Aux Loss multiplier $w_{\text{aux}} = 0.0$.
@@ -67,6 +72,6 @@ To test if the model learns, avoids router collapse, and spreads auxiliary loss 
 * Track expert assignment fractions $f_i$ across steps.
 * **Assertion:** In Run A, $f_0 \approx 1.0$ (collapse persists). In Run B, $\text{CV}(f)$ decreases significantly and tokens redistribute across all $E$ experts ($f_i \to \frac{1}{E}$).
 
-### Test 4: Uniform Input Symmetry Test (Execution time: ~2 seconds)
+### Test 5: Uniform Input Symmetry Test (Execution time: ~2 seconds)
 * Pass zero input $X = \mathbf{0}$ or uniform inputs with zero noise $\epsilon = 0$.
 * **Assertion:** Assert $P_i = \frac{1}{E}$ and $f_i = \frac{1}{E}$ across all experts within floating-point tolerance (`torch.allclose`).

@@ -1,6 +1,6 @@
 import torch
 import sys, os
-
+import numpy as np
 sys.path.append(os.path.dirname(__file__) + "/../src")
 
 from shazeer_moe import NoisyTopKGating, ShazeerMOE
@@ -50,6 +50,15 @@ def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_ep
                 # print(f"expert weight {expert_weight.norm()} gradexpert norm {expert_weight.grad.norm()}")
                 for (k, v) in model.noisy_gating.gradient_cache.items():
                     wandb.log({k : v})
+
+                expert_norm = expert_weight.abs().mean(dim=(1, 2)).detach().cpu().numpy()
+                assert len(expert_norm) == N
+                wandb.log({f"expert_norms/expert_{i}": val for i, val in enumerate(expert_norm)})
+
+                wandb.log({
+                    "metrics/expert_norm_std": np.std(expert_norm),
+                    "metrics/expert_norm_max_min_diff": np.max(expert_norm) - np.min(expert_norm)
+                })
 
             aux_losses.append(aux_loss)
             losses.append(loss.item())
@@ -177,18 +186,21 @@ def test_router_collapse():
 
 def test_gmm_fit():
     models = [
-        SimpleDNN(D=D_in,N=N, H=100),
+        #SimpleDNN(D=D_in,N=N, H=100),
         ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H),
+        ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H),
+        ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H)
     ]
+    A = [0, 0.01, 0.1]
 
-    for model in models:
+    for model, a in zip(models, A):
         train_dataloader, test_dataloader = gmm_dataset.generate_dataset(M, D_in, N, batch_size=1000)
         criterion = torch.nn.CrossEntropyLoss()
-        model_name = model.__class__.__name__
+        model_name = f"{model.__class__.__name__}_{a}"
         wandb.init(project=f"moe_benchmark", name=model_name, config=config, reinit=True)
         print(f"Model summary {model.__class__.__name__} {summary(model, input_size=(1, 2))}")
         wandb.watch(model, log="all", log_freq=100)
-        fit_batch(model, train_dataloader, test_dataloader, criterion, D_out=N, num_epochs=25, a=0.25)
+        fit_batch(model, train_dataloader, test_dataloader, criterion, D_out=N, num_epochs=25, a=a)
 
 
 if __name__ == "__main__":
