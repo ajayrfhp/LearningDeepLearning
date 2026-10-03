@@ -60,7 +60,7 @@ def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_ep
                     "metrics/expert_norm_max_min_diff": np.max(expert_norm) - np.min(expert_norm)
                 })
 
-            aux_losses.append(aux_loss)
+            aux_losses.append(a * aux_loss)
             losses.append(loss.item())
 
         model.eval()
