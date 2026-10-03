@@ -186,21 +186,21 @@ def test_router_collapse():
 
 def test_gmm_fit():
     models = [
-        #SimpleDNN(D=D_in,N=N, H=100),
-        ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H),
-        ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H),
-        ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H)
+        #(None, SimpleDNN(D=D_in,N=N, H=100)),
+        (0, (ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H, noise_penalty=0))),
+        (0.01, (ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H, noise_penalty=1))),
+        (0.02, (ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H, noise_penalty=1))),
+        #(0.1, (ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H)))
     ]
-    A = [0, 0.01, 0.1]
 
-    for model, a in zip(models, A):
+    for a, model in models:
         train_dataloader, test_dataloader = gmm_dataset.generate_dataset(M, D_in, N, batch_size=1000)
         criterion = torch.nn.CrossEntropyLoss()
         model_name = f"{model.__class__.__name__}_{a}"
         wandb.init(project=f"moe_benchmark", name=model_name, config=config, reinit=True)
         print(f"Model summary {model.__class__.__name__} {summary(model, input_size=(1, 2))}")
         wandb.watch(model, log="all", log_freq=100)
-        fit_batch(model, train_dataloader, test_dataloader, criterion, D_out=N, num_epochs=25, a=a)
+        fit_batch(model, train_dataloader, test_dataloader, criterion, D_out=N, num_epochs=num_epochs, a=a)
 
 
 if __name__ == "__main__":
@@ -209,6 +209,7 @@ if __name__ == "__main__":
     D_in = 2
     D_out = 4
     H = 100
+    num_epochs = 50
 
     N = 4
     K = 3
@@ -217,7 +218,8 @@ if __name__ == "__main__":
         "B" : B,
         "H" : H,
         "N" : N,
-        "K" : K 
+        "K" : K,
+        "num_epochs" : num_epochs
     }
 
 

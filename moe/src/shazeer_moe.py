@@ -4,12 +4,13 @@ import wandb
 import math
 
 class NoisyTopKGating(nn.Module):
-    def __init__(self, D_in, N, K):
+    def __init__(self, D_in, N, K, noise_penalty=1):
         super(NoisyTopKGating, self).__init__()
         self.norm = torch.nn.LayerNorm(D_in)
         self.W_G = torch.nn.Parameter(torch.randn((D_in, N))/ math.sqrt(D_in))
         self.W_N = torch.nn.Parameter(torch.randn((D_in, N))/ math.sqrt(D_in))
         self.softplus = nn.Softplus()
+        self.noise_penalty = noise_penalty
 
         self.D_in = D_in
         self.N = N 
@@ -35,7 +36,7 @@ class NoisyTopKGating(nn.Module):
         
         e = self.normal_dist.sample((B, S, self.N)) 
 
-        H = W_G + e * self.softplus(W_N) # (B, S, N)
+        H = W_G + self.noise_penalty * e * self.softplus(W_N) # (B, S, N)
         if H.requires_grad:
             H.register_hook(lambda grad : self.gradient_cache.update({"H_grad" : grad.norm().item()}))
         KV, KI = torch.topk(H, k=self.K, dim=-1) # (B, S, K)
@@ -82,7 +83,7 @@ class NoisyTopKGating(nn.Module):
         return G, aux_loss, KI     
 
 class ShazeerMOE(nn.Module):
-    def __init__(self, D_in, D_out, N, K, H):
+    def __init__(self, D_in, D_out, N, K, H, noise_penalty=1):
         super(ShazeerMOE, self).__init__()
         self.D_in = D_in
         self.D_out = D_out
@@ -98,7 +99,7 @@ class ShazeerMOE(nn.Module):
             torch.nn.Linear(H, D_out),
             )
 
-        self.noisy_gating = NoisyTopKGating(D_in, N, K)
+        self.noisy_gating = NoisyTopKGating(D_in, N, K, noise_penalty)
         if torch.cuda.is_available():
             self.noisy_gating.to("cuda")
             self.experts.to("cuda")
@@ -135,6 +136,8 @@ class ShazeerMOE(nn.Module):
         assert Y.shape == (M, H)
 
         expert_counts = torch.bincount(KI.reshape(-1), minlength=self.N).float()
+        if wandb.run:
+            wandb.log({f"expert_counts/expertcount_{i}": val for i, val in enumerate(expert_counts)})
         mean_load = expert_counts.mean()
         std_load = expert_counts.std()
         cv = (std_load / (mean_load + 1e-8)).item()
@@ -142,5 +145,6 @@ class ShazeerMOE(nn.Module):
             wandb.log({
                         "throughput/expert_load_cv": cv,  # Closer to 0 = perfect hardware throughput
             })
+        
 
         return self.fc(torch.nn.ReLU()(Y)), aux_loss

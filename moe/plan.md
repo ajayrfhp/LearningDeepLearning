@@ -63,6 +63,7 @@ To test if the model learns, avoids router collapse, and spreads auxiliary loss 
 - Create a dataset from O gaussian mixture models, where O <= k. The network should be able to learn and each expert should ideally pick one cluster to learn from when load balanced
 - Coefficient of variation in the routing layer is lowest when a soft penalty of 0.1 is compared to not applying at all. This shows stuff is working. With higher penalties, there is more variation in weights, oscillating indicating a sweetspot
 ![Shazeer MoE CV](./tests/shazeer_moe_cv.png)
+- https://forge.coreweave.com/wandb/ajayrfhp1710-microsoft/moe_benchmark/runs/dq73g16v/panel/uendiu4p8
 
 ### Test 4: Anti-Router Collapse & Aux Loss Stress Test (Execution time: ~30 seconds)
 * Initialize $W_{\text{gate}}$ with heavy manual bias toward Expert 0 ($W_{\text{gate}}[0] = +10.0$) to simulate instant router collapse.
