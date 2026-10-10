@@ -91,13 +91,8 @@ class ShazeerMOE(nn.Module):
         self.K = K
         self.H = H
         
-        self.experts = nn.Parameter(torch.randn((N, D_in, H), requires_grad=True))
-        self.fc = torch.nn.Sequential(
-            torch.nn.Linear(H, H),
-            torch.nn.LazyBatchNorm1d(),
-            torch.nn.ReLU(),
-            torch.nn.Linear(H, D_out),
-            )
+        self.experts_up = nn.Parameter(torch.randn((N, D_in, H), requires_grad=True))
+        self.experts_down = nn.Parameter(torch.randn((N, H, D_out)), requires_grad=True)
 
         self.noisy_gating = NoisyTopKGating(D_in, N, K, noise_penalty)
         if torch.cuda.is_available():
@@ -121,11 +116,15 @@ class ShazeerMOE(nn.Module):
 
         assert KI.shape == (M, K)
 
-        EK = self.experts[KI]
+        EK_UP = self.experts_up[KI]
+        EK_DOWN = self.experts_down[KI]
 
         # N gets replaced with M, K 
 
-        assert EK.shape == (M, K, D_in, H)
+        assert EK_UP.shape == (M, K, D_in, H)
+        assert EK_DOWN.shape == (M, K, H, D_out)
+
+        
 
         XK = X.unsqueeze(dim=1).expand(-1, K, D_in)
 
