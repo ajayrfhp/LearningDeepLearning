@@ -2,6 +2,10 @@
 
 ## Phase 1: Mathematical Foundations & Loss Definitions
 
+**New plan is required [5/11/2026]**
+- Studied throughput notes. 
+- Next I need to understand where current MOE implementation is at and what is needed to evaluate different models
+
 ### 1. Noisy Gating Score
 Given token representation $x \in \mathbb{R}^D$:
 $$H(x)_i = (x \cdot W_{\text{gate}})_i + \epsilon \cdot \text{Softplus}((x \cdot W_{\text{noise}})_i), \quad \epsilon \sim \mathcal{N}(0, 1)$$
@@ -64,3 +68,4 @@ To test if the model learns, avoids router collapse, and spreads auxiliary loss 
 - Coefficient of variation in the routing layer is lowest when a soft penalty of 0.1 is compared to not applying at all. This shows stuff is working. With higher penalties, there is more variation in weights, oscillating indicating a sweetspot
 ![Shazeer MoE CV](./tests/shazeer_moe_cv.png)
 - https://forge.coreweave.com/wandb/ajayrfhp1710-microsoft/moe_benchmark/runs/dq73g16v/panel/uendiu4p8
+
