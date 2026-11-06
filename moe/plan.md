@@ -65,7 +65,15 @@ To test if the model learns, avoids router collapse, and spreads auxiliary loss 
 
 ### Test 3 : GMM test
 - Create a dataset from O gaussian mixture models, where O <= k. The network should be able to learn and each expert should ideally pick one cluster to learn from when load balanced
+
+### Test 4 : Validate loss works by comparing throughput for high penalties and low penalties
 - Coefficient of variation in the routing layer is lowest when a soft penalty of 0.1 is compared to not applying at all. This shows stuff is working. With higher penalties, there is more variation in weights, oscillating indicating a sweetspot
 ![Shazeer MoE CV](./tests/shazeer_moe_cv.png)
 - https://forge.coreweave.com/wandb/ajayrfhp1710-microsoft/moe_benchmark/runs/dq73g16v/panel/uendiu4p8
+
+
+### Phase 4 : Benchmarking
+- Measure throughput in terms of tokens per second for higher batch sizes. 
+- Track VRAM footprint during forward pass.
+- Implement optimized MOE.
 
