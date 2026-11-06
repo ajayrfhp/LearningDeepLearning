@@ -76,4 +76,8 @@ To test if the model learns, avoids router collapse, and spreads auxiliary loss 
 - Measure throughput in terms of tokens per second for higher batch sizes. 
 - Track VRAM footprint during forward pass.
 - Implement optimized MOE.
-
+- For prefill phase
+  - Pass large sequence length, massive M. It will be high arithmetic intensity. We are meausring how fast MOE can ingest and process tokens. 
+  - Set batch size = 1 and increase token size. We should see GPU shifting from memory bound to compute bound.
+- For decode phase
+  - Pass S = 1 and sweep through batch sizes. Memory should be bottleneck
