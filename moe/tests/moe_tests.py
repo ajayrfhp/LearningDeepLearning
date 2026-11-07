@@ -12,6 +12,7 @@ from matplotlib import pyplot as plt
 from torchinfo import summary
 import wandb 
 from torch.utils.data import TensorDataset, DataLoader
+import time
 
 def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_epochs=2, a=1):
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -247,8 +248,8 @@ def test_gmm_fit():
     models = [
         #(None, SimpleDNN(D=D_in,N=N, H=100)),
         (0, (ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H, noise_penalty=0))),
-        (0.01, (ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H, noise_penalty=1))),
-        (0.02, (ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H, noise_penalty=1))),
+        (0.01, (ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H, noise_penalty=0.01))),
+        (0.02, (ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H, noise_penalty=0.02))),
         #(0.1, (ShazeerMOE(D_in=D_in, D_out=N, N=N, K=K, H=H)))
     ]
 
@@ -261,11 +262,48 @@ def test_gmm_fit():
         wandb.watch(model, log="all", log_freq=100)
         fit_batch(model, train_dataloader, test_dataloader, criterion, D_out=N, num_epochs=num_epochs, a=a)
 
+def test_moe_throughput_prefill():
+    """
+    During prefill phase constraint should be compute as sequence length grows.
+    Set batch size = 1 and watch for throughput as a function of sequence length
+    Throughput should be sequence length per second
+    """
+
+    B = 1
+    
+    D_in = 500
+    D_out = 500
+    H = 1000
+
+    N = 1000
+    K = 100
+    config = {
+            "B" : B,
+            "H" : H,
+            "N" : N,
+            "K" : K
+        }
+
+    model = ShazeerMOE(D_in=D_in, D_out=D_out, N=N, K=K, H=H, noise_penalty=0.01)
+    
+    for S in [10, 50, 100]:
+        M = B * S
+        input_batch = torch.randn((M, D_in))
+        model_name = f"{model.__class__.__name__}_{S}"
+        wandb.init(project="moe_prefill", name=model_name, config=config, reinit=True)
+        start_time = time.time()
+        _ = model.forward(input_batch)
+        end_time = time.time()
+        latency = end_time - start_time
+        throughput = S / latency
+        wandb.log({
+            "throughput" : throughput
+        })
+    
 
 if __name__ == "__main__":
-
-
-    test_non_zero_gradient()
+    # test_non_zero_gradient()
     # test_synthetic_overfitting()
     # test_router_collapse()
     # test_gmm_fit()
+    test_moe_throughput_prefill()
