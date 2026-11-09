@@ -74,12 +74,17 @@ To test if the model learns, avoids router collapse, and spreads auxiliary loss 
 
 ### Phase 4 : Benchmarking
 - Measure throughput in terms of tokens per second for higher batch sizes. 
-- Track VRAM footprint during forward pass.
-- Implement optimized MOE.
 - For prefill phase
   - Pass large sequence length, massive M. It will be high arithmetic intensity. We are meausring how fast MOE can ingest and process tokens. 
   - Set batch size = 1 and increase token size. We should see GPU shifting from memory bound to compute bound.
   - Interesting enough, sequence length of 50 was optimal for billion parameter model. https://forge.coreweave.com/wandb/ajayrfhp1710-microsoft/moe_prefill?nw=nwuserajayrfhp1710
   ![throughput_prefill](throughput_prefill.png)
-- For decode phase
+- For decode phase 
+  - https://forge.coreweave.com/wandb/ajayrfhp1710-microsoft/moe_decode?nw=nwuserajayrfhp1710
   - Pass S = 1 and sweep through batch sizes. Memory should be bottleneck
+  ![throughput_decode](throughput_decode.png)
+  ![throughput decode memory](throughput_decode_memory.png)
+- Implement optimized MOE
+  - [To do]
+- Evaluate optimized MOE against baseline for throughput and memory efficiency.
+  - [To do]

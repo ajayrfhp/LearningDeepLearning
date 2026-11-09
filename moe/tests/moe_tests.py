@@ -299,6 +299,43 @@ def test_moe_throughput_prefill():
         wandb.log({
             "throughput" : throughput
         })
+
+def test_moe_decode():
+    """
+    During decode phase bottleneck should be memory as batch size grows. Testing for sequence length 1, 
+    first token memory usage.
+    """
+
+    S = 1
+    
+    D_in = 500
+    D_out = 500
+    H = 1000
+
+    N = 1000
+    K = 100
+
+    model = ShazeerMOE(D_in=D_in, D_out=D_out, N=N, K=K, H=H, noise_penalty=0.01)
+    
+    for B in [10, 50, 100]:
+        M = B * S
+        config = {
+            "B" : B,
+            "H" : H,
+            "N" : N,
+            "K" : K
+        }
+        input_batch = torch.randn((M, D_in))
+        model_name = f"{model.__class__.__name__}_{B}"
+        wandb.init(project="moe_decode", name=model_name, config=config, reinit=True)
+        start_time = time.time()
+        _ = model.forward(input_batch)
+        end_time = time.time()
+        latency = end_time - start_time
+        throughput = S / latency
+        wandb.log({
+            "throughput" : throughput
+        })
     
 
 if __name__ == "__main__":
@@ -306,4 +343,5 @@ if __name__ == "__main__":
     # test_synthetic_overfitting()
     # test_router_collapse()
     # test_gmm_fit()
-    test_moe_throughput_prefill()
+    # test_moe_throughput_prefill()
+    test_moe_decode()
