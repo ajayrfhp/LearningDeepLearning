@@ -34,5 +34,8 @@ Losses are combined
 
 ### Implementation 
 
+- Went to basics to implement benchmarking of simple model, I was not using cuda.time before. 
+![batch_processor_throughput](batch_processor_throughput.png)
+
 ### Testing
 https://wandb.ai/ajayrfhp1710-microsoft/moe_benchmark/runs/uyy8nd8y
