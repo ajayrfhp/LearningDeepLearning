@@ -1,0 +1,148 @@
+import torch 
+import torch.nn as nn
+import wandb
+import math
+
+class NoisyTopKGating(nn.Module):
+    def __init__(self, D_in, N, K, noise_penalty=1):
+        super(NoisyTopKGating, self).__init__()
+        self.norm = torch.nn.LayerNorm(D_in)
+        self.W_G = torch.nn.Parameter(torch.randn((D_in, N))/ math.sqrt(D_in))
+        self.W_N = torch.nn.Parameter(torch.randn((D_in, N))/ math.sqrt(D_in))
+        self.softplus = nn.Softplus()
+        self.noise_penalty = noise_penalty
+
+        self.D_in = D_in
+        self.N = N 
+        self.K = K
+
+        self.register_buffer("loc", torch.tensor(0.0))
+        self.register_buffer("scale", torch.tensor(1.0))
+        self.gradient_cache = {}
+
+    @property
+    def normal_dist(self):
+        return torch.distributions.Normal(loc=self.loc, scale=self.scale)
+
+    def forward(self, X:torch.tensor): # (M, D_in)
+        X = self.norm(X)
+        (M, D_in) = X.shape
+        K, N = self.K, self.N
+
+        W_G = X @ self.W_G # (M, D_in) @ (D_in, N) = (M, N)
+        W_N = X @ self.W_N
+
+        assert W_G.shape == (M, self.N)
+        
+        e = self.normal_dist.sample((M, self.N)) 
+
+        H = W_G + self.noise_penalty * e * self.softplus(W_N) # (M, N)
+        if H.requires_grad:
+            H.register_hook(lambda grad : self.gradient_cache.update({"H_grad" : grad.norm().item()}))
+        KV, KI = torch.topk(H, k=self.K, dim=-1) # (M, K)
+
+        assert KI.shape == (M, self.K)
+        assert KV.shape == (M, self.K)
+
+        G = nn.Softmax(dim=-1)(KV)
+
+        assert G.shape == (M, K)
+
+        if G.requires_grad:
+            G.register_hook(lambda grad : self.gradient_cache.update({"G_grad" : grad.norm().item()}))
+
+        # construct G_N (M, N) from G (M, K) and KI (M, N) where KI are indices. Torch.scatter will help here. 
+        G_N = torch.zeros((M, N), dtype=G.dtype, device=G.device)
+        G_N = G_N.scatter(dim=1, index=KI, src=G)
+
+        assert G_N.shape == (M, N)
+
+        probs = G_N.mean(dim=(0))
+
+        assert probs.shape == (self.N, )
+
+        threshold_logit = KV[:,-1:]
+
+        assert threshold_logit.shape == (M, 1)
+
+        D = (W_G - threshold_logit) / self.softplus(W_N)
+        assert D.shape == (M, self.N)
+
+        D_clamped = torch.nan_to_num(torch.clamp(D, min=-10, max=10), posinf=10.0, neginf=-10.0)
+
+        if D.requires_grad:
+            D.register_hook(lambda grad : self.gradient_cache.update({"D_grad" : grad.norm().item()}))
+
+        f = self.normal_dist.cdf(D_clamped).mean(dim=(0))
+        assert f.shape == (self.N, )
+        if f.requires_grad:
+            f.register_hook(lambda grad : self.gradient_cache.update({"F_grad" : grad.norm().item()}))
+
+        aux_loss = torch.sum(f * probs)
+
+        return G, aux_loss, KI     
+
+class ShazeerMOE(nn.Module):
+    def __init__(self, D_in, D_out, N, K, H, noise_penalty=1):
+        super(ShazeerMOE, self).__init__()
+        self.D_in = D_in
+        self.D_out = D_out
+        self.N = N 
+        self.K = K
+        self.H = H
+        
+        self.experts_up = nn.Parameter(torch.randn((N, D_in, H), requires_grad=True))
+        self.experts_down = nn.Parameter(torch.randn((N, H, D_out)), requires_grad=True)
+
+        self.noisy_gating = NoisyTopKGating(D_in, N, K, noise_penalty)
+        if torch.cuda.is_available():
+            self.noisy_gating.to("cuda")
+            self.experts_up.to("cuda")
+            self.experts_down.to("cuda")
+
+    def forward(self, X):
+        M, D_in = X.shape
+        K, N, D_out, H = self.K, self.N, self.D_out, self.H
+        G, aux_loss, KI = self.noisy_gating(X)
+        
+        assert G.shape == (M, K)
+
+        assert KI.shape == (M, K)
+
+        for i in range(self.N):
+            # each expert is going to interact with the set of inputs it cares about.
+
+        EK_UP = self.experts_up[KI]
+        EK_DOWN = self.experts_down[KI]
+
+        # N gets replaced with M, K 
+
+        assert EK_UP.shape == (M, K, D_in, H)
+        assert EK_DOWN.shape == (M, K, H, D_out)
+
+        # Expand X to do magic
+        XK = X.unsqueeze(dim=1).expand(-1, K, D_in)
+
+        assert XK.shape == (M, K, D_in)
+
+        HEK_UP = nn.ReLU()(torch.einsum("mkd,mkdh->mkh", XK, EK_UP))
+        assert HEK_UP.shape == (M, K, H)
+
+        HEK_DOWN = torch.einsum("mkh,mkho->mko", HEK_UP, EK_DOWN)
+        assert HEK_DOWN.shape == (M, K, D_out)
+
+        Y = torch.einsum("mko,mk->mo", HEK_DOWN, G)
+
+        expert_counts = torch.bincount(KI.reshape(-1), minlength=self.N).float()
+        if wandb.run:
+            wandb.log({f"expert_counts/expertcount_{i}": val for i, val in enumerate(expert_counts)})
+        mean_load = expert_counts.mean()
+        std_load = expert_counts.std()
+        cv = (std_load / (mean_load + 1e-8)).item()
+        if wandb.run:
+            wandb.log({
+                        "throughput/expert_load_cv": cv,  # Closer to 0 = perfect hardware throughput
+            })
+        
+
+        return Y, aux_loss
