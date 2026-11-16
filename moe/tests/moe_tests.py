@@ -20,20 +20,18 @@ def to_cuda(obj):
     return obj.to(device)
 
 def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_epochs=2, a=1):
+    model = to_cuda(model)
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     losses = []
     aux_losses = []
-    if torch.cuda.is_available():
-        model.to("cuda")
     
     for i in range(num_epochs):
         model.train()
         for (X, target_tensor) in train_dataloader:
-            if torch.cuda.is_available():
-                X = X.to("cuda")
-                model.to("cuda")
-                target_tensor = target_tensor.to("cuda")
+        
+            X = to_cuda(X)
+            target_tensor = to_cuda(target_tensor).long()
 
             optim.zero_grad()
             aux_loss = 0
@@ -43,7 +41,6 @@ def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_ep
                 pred = model.forward(X)
 
             assert pred.is_floating_point(), "pred is not float"
-            assert target_tensor.is_floating_point(), "target is not float"
             
             loss = criterion(pred, target_tensor) + a * aux_loss
             loss.backward()
@@ -90,15 +87,15 @@ def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_ep
             else:
                 preds = model.forward(X_test)
             assert preds.shape == (X_test.shape[0], D_out), f"shape of preds {preds.shape}, is not {X_test} * {D_out}"
+            
+            test_loss = criterion(preds, Y_test)
+            test_losses.append(test_loss.item())
+            
             if isinstance(criterion, torch.nn.CrossEntropyLoss):
                 preds = preds.argmax(dim=-1)
                 batch_correct = (preds == Y_test).sum()
                 correct += batch_correct
                 total += X_test.shape[0]
-
-            if isinstance(criterion, torch.nn.MSELoss):
-                test_loss = criterion(preds, target_tensor)
-                test_losses.append(test_loss.item())
 
         model_name = {model.__class__.__name__}
         if total > 0:
@@ -132,10 +129,9 @@ def test_non_zero_gradient():
     X = torch.randn((M, D_in))
     Y = torch.randn((M, D_out))
 
-    if torch.cuda.is_available():
-        moe.to("cuda")
-        X = X.to("cuda")
-        Y = Y.to("cuda")
+    moe = to_cuda(moe)
+    X = to_cuda(X)
+    Y = to_cuda(Y)
 
     indices = torch.randperm(X.shape[0])
     X, Y = X[indices], Y[indices]
@@ -197,12 +193,12 @@ def test_synthetic_overfitting():
     new_inpt = torch.tensor([[1.0, 1.0]])
     new_inpt = new_inpt.reshape((-1, 2))
     expected_gt = torch.tensor([[3.0, 3.0]]).reshape((-1, 2))
-    if torch.cuda.is_available():
-        moe.to("cuda")
-        X = X.to("cuda")
-        Y = Y.to("cuda")
-        new_inpt = new_inpt.to("cuda")
-        expected_gt = expected_gt.to("cuda")
+    
+    moe = to_cuda(moe)
+    X = to_cuda(X)
+    Y = to_cuda(Y)
+    new_inpt = to_cuda(new_inpt)
+    expected_gt = to_cuda(expected_gt)
 
     pred, _ = moe.forward(new_inpt)
 
@@ -318,5 +314,5 @@ if __name__ == "__main__":
     # test_non_zero_gradient()
     # test_synthetic_overfitting()
     # test_router_collapse()
-    # test_gmm_fit()
-    test_moe_decode()
+    test_gmm_fit()
+    # test_moe_decode()
