@@ -14,6 +14,11 @@ import wandb
 from torch.utils.data import TensorDataset, DataLoader
 import time
 
+def to_cuda(obj):
+    """Recursively or directly moves tensors or models to the active device."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return obj.to(device)
+
 def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_epochs=2, a=1):
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
 
@@ -262,44 +267,6 @@ def test_gmm_fit():
         wandb.watch(model, log="all", log_freq=100)
         fit_batch(model, train_dataloader, test_dataloader, criterion, D_out=N, num_epochs=num_epochs, a=a)
 
-def test_moe_throughput_prefill():
-    """
-    During prefill phase constraint should be compute as sequence length grows.
-    Set batch size = 1 and watch for throughput as a function of sequence length
-    Throughput should be sequence length per second
-    """
-
-    B = 1
-    
-    D_in = 500
-    D_out = 500
-    H = 1000
-
-    N = 1000
-    K = 100
-    config = {
-            "B" : B,
-            "H" : H,
-            "N" : N,
-            "K" : K
-        }
-
-    model = ShazeerMOE(D_in=D_in, D_out=D_out, N=N, K=K, H=H, noise_penalty=0.01)
-    
-    for S in [10, 50, 100]:
-        M = B * S
-        input_batch = torch.randn((M, D_in))
-        model_name = f"{model.__class__.__name__}_{S}"
-        wandb.init(project="moe_prefill", name=model_name, config=config, reinit=True)
-        start_time = time.time()
-        _ = model.forward(input_batch)
-        end_time = time.time()
-        latency = end_time - start_time
-        throughput = S / latency
-        wandb.log({
-            "throughput" : throughput
-        })
-
 def test_moe_decode():
     """
     During decode phase bottleneck should be memory as batch size grows. Testing for sequence length 1, 
@@ -316,8 +283,10 @@ def test_moe_decode():
     K = 100
 
     model = ShazeerMOE(D_in=D_in, D_out=D_out, N=N, K=K, H=H, noise_penalty=0.01)
-    
-    for B in [10, 50, 100]:
+    model = to_cuda(model)
+
+    _ = model(to_cuda(torch.randn(S, D_in)))
+    for B in [1, 5, 25]:
         M = B * S
         config = {
             "B" : B,
@@ -325,16 +294,23 @@ def test_moe_decode():
             "N" : N,
             "K" : K
         }
-        input_batch = torch.randn((M, D_in))
         model_name = f"{model.__class__.__name__}_{B}"
         wandb.init(project="moe_decode", name=model_name, config=config, reinit=True)
-        start_time = time.time()
+        input_batch = to_cuda(torch.randn((M, D_in)))
+
+        start_time = torch.cuda.Event(enable_timing=True)
+        end_time = torch.cuda.Event(enable_timing=True)
+
+        start_time.record()
         _ = model.forward(input_batch)
-        end_time = time.time()
-        latency = end_time - start_time
-        throughput = S / latency
+        end_time.record()
+
+        torch.cuda.synchronize()
+        latency = start_time.elapsed_time(end_time)
+        throughput = B * S / (latency / 1000.0)
         wandb.log({
-            "throughput" : throughput
+            "throughput" : throughput,
+            "latency" : latency
         })
     
 
@@ -343,5 +319,4 @@ if __name__ == "__main__":
     # test_synthetic_overfitting()
     # test_router_collapse()
     # test_gmm_fit()
-    # test_moe_throughput_prefill()
     test_moe_decode()
