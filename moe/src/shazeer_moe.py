@@ -95,10 +95,6 @@ class ShazeerMOE(nn.Module):
         self.experts_down = nn.Parameter(torch.randn((N, H, D_out)), requires_grad=True)
 
         self.noisy_gating = NoisyTopKGating(D_in, N, K, noise_penalty)
-        if torch.cuda.is_available():
-            self.noisy_gating.to("cuda")
-            self.experts_up.to("cuda")
-            self.experts_down.to("cuda")
 
     def forward(self, X):
         M, D_in = X.shape

@@ -31,7 +31,7 @@ def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_ep
         for (X, target_tensor) in train_dataloader:
         
             X = to_cuda(X)
-            target_tensor = to_cuda(target_tensor).long()
+            target_tensor = to_cuda(target_tensor)
 
             optim.zero_grad()
             aux_loss = 0
@@ -86,7 +86,7 @@ def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_ep
                 preds, _ = model.forward(X_test)
             else:
                 preds = model.forward(X_test)
-            assert preds.shape == (X_test.shape[0], D_out), f"shape of preds {preds.shape}, is not {X_test} * {D_out}"
+            assert preds.shape == (X_test.shape[0], D_out), f"shape of preds {preds.shape}, is not {X_test.shape[0]} * {D_out}"
             
             test_loss = criterion(preds, Y_test)
             test_losses.append(test_loss.item())
@@ -162,15 +162,15 @@ def test_non_zero_gradient():
     assert w_g.sum().abs() > 0 and w_n.sum().abs() > 0 and w_e_up.sum().abs() > 0 and w_e_down.sum().abs() > 0
 
 def test_synthetic_overfitting():
-    B = 100
+    B = 10000
     S = 5
     D_in = 2
-    D_out = 4
+    D_out = 2
     H = 100
     num_epochs = 50
 
-    N = 4
-    K = 3
+    N = 1
+    K = 1
     M = B * S
     config = {
         "B" : B,
@@ -180,19 +180,31 @@ def test_synthetic_overfitting():
         "num_epochs" : num_epochs
     }
     test_size = 0.8
-    batch_size = 100
+    batch_size = 500
 
-    X = torch.randn((M, 2))
-    Y = (X.clone().detach())  * 3 
+    X = torch.randn((M, D_in)) * 5
+    Y = torch.square(X)
     # Y = Y.unsqueeze(-1).expand(-1, -1, D)
-    assert Y.shape == (M, 2)
+    assert Y.shape == (M, D_out)
 
-    moe = ShazeerMOE(D_in=2, D_out=2, N=N, K=K, H=H)
-    fit_batch(moe, X, Y, num_epochs=100, a = 0)
+    train_length = int(test_size * X.shape[0])
+    X_train, X_test, Y_train, Y_test = X[:train_length], X[train_length:], Y[:train_length], Y[train_length:]
+    train_dataset = TensorDataset(X_train.to(torch.float), Y_train.to(torch.float))
+    train_dataloader = DataLoader(train_dataset, batch_size, shuffle=True)
 
-    new_inpt = torch.tensor([[1.0, 1.0]])
+    test_dataset = TensorDataset(X_test.to(torch.float), Y_test.to(torch.float))
+    test_dataloader = DataLoader(test_dataset, batch_size)
+    criterion = torch.nn.MSELoss()
+
+    moe = ShazeerMOE(D_in=D_in, D_out=D_out, N=N, K=K, H=H)
+    model_name = f"synthetic_overfitting"
+    wandb.init(project=f"moe_benchmark_test", name=model_name, config=config, reinit=True)
+    wandb.watch(moe, log="all", log_freq=100)
+    fit_batch(moe, train_dataloader, test_dataloader, criterion, D_out=D_out, num_epochs=num_epochs, a=0.1)
+
+    new_inpt = torch.tensor([[2.0, 2.0]])
     new_inpt = new_inpt.reshape((-1, 2))
-    expected_gt = torch.tensor([[3.0, 3.0]]).reshape((-1, 2))
+    expected_gt = torch.tensor([[4.0, 4.0]]).reshape((-1, 2))
     
     moe = to_cuda(moe)
     X = to_cuda(X)
@@ -202,7 +214,7 @@ def test_synthetic_overfitting():
 
     pred, _ = moe.forward(new_inpt)
 
-    assert torch.allclose(pred[0], expected_gt, atol=0.5), f"{pred} is not 3"
+    assert torch.allclose(pred[0], expected_gt, atol=0.5), f"{pred} is not 4"
 
 def test_router_collapse():
     X = torch.randn((B, S, D))
@@ -312,7 +324,7 @@ def test_moe_decode():
 
 if __name__ == "__main__":
     # test_non_zero_gradient()
-    # test_synthetic_overfitting()
+    test_synthetic_overfitting()
     # test_router_collapse()
-    test_gmm_fit()
+    # test_gmm_fit()
     # test_moe_decode()
