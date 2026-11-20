@@ -91,8 +91,11 @@ class ShazeerMOE(nn.Module):
         self.K = K
         self.H = H
         
-        self.experts_up = nn.Parameter(torch.randn((N, D_in, H), requires_grad=True))
-        self.experts_down = nn.Parameter(torch.randn((N, H, D_out)), requires_grad=True)
+        self.experts_up = nn.Parameter(torch.randn((N, D_in, H))/ math.sqrt(D_in), requires_grad=True)
+        self.experts_down = nn.Parameter(torch.randn((N, H, D_out))/ math.sqrt(D_in), requires_grad=True)
+
+        self.bias1 = nn.Parameter(torch.randn((N, ), requires_grad=True))
+        self.bias2 = nn.Parameter(torch.randn((N, ), requires_grad=True))
 
         self.noisy_gating = NoisyTopKGating(D_in, N, K, noise_penalty)
 
@@ -105,8 +108,8 @@ class ShazeerMOE(nn.Module):
 
         assert KI.shape == (M, K)
 
-        EK_UP = self.experts_up[KI]
-        EK_DOWN = self.experts_down[KI]
+        EK_UP = self.experts_up[KI] + self.bias1
+        EK_DOWN = self.experts_down[KI] + self.bias2
 
         # N gets replaced with M, K 
 
@@ -118,8 +121,10 @@ class ShazeerMOE(nn.Module):
 
         assert XK.shape == (M, K, D_in)
 
-        HEK_UP = nn.ReLU()(torch.einsum("mkd,mkdh->mkh", XK, EK_UP))
+        HEK_UP = nn.GELU()(torch.einsum("mkd,mkdh->mkh", XK, EK_UP))
         assert HEK_UP.shape == (M, K, H)
+
+        HEK_UP = nn.Dropout1d(p=0.05)(HEK_UP.permute(0, 2, 1)).permute(0, 2, 1)
 
         HEK_DOWN = torch.einsum("mkh,mkho->mko", HEK_UP, EK_DOWN)
         assert HEK_DOWN.shape == (M, K, D_out)

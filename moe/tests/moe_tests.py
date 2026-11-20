@@ -21,7 +21,7 @@ def to_cuda(obj):
 
 def fit_batch(model, train_dataloader, test_dataloader, criterion, D_out, num_epochs=2, a=1):
     model = to_cuda(model)
-    optim = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optim = torch.optim.Adam(model.parameters(), lr=2e-3)
 
     losses = []
     aux_losses = []
@@ -162,12 +162,12 @@ def test_non_zero_gradient():
     assert w_g.sum().abs() > 0 and w_n.sum().abs() > 0 and w_e_up.sum().abs() > 0 and w_e_down.sum().abs() > 0
 
 def test_synthetic_overfitting():
-    B = 10000
+    B = 1000
     S = 5
     D_in = 2
     D_out = 2
-    H = 100
-    num_epochs = 50
+    H = 256
+    num_epochs = 300
 
     N = 1
     K = 1
@@ -182,7 +182,7 @@ def test_synthetic_overfitting():
     test_size = 0.8
     batch_size = 500
 
-    X = torch.randn((M, D_in)) * 5
+    X = torch.randn((M, D_in))
     Y = torch.square(X)
     # Y = Y.unsqueeze(-1).expand(-1, -1, D)
     assert Y.shape == (M, D_out)
@@ -200,11 +200,11 @@ def test_synthetic_overfitting():
     model_name = f"synthetic_overfitting"
     wandb.init(project=f"moe_benchmark_test", name=model_name, config=config, reinit=True)
     wandb.watch(moe, log="all", log_freq=100)
-    fit_batch(moe, train_dataloader, test_dataloader, criterion, D_out=D_out, num_epochs=num_epochs, a=0.1)
+    fit_batch(moe, train_dataloader, test_dataloader, criterion, D_out=D_out, num_epochs=num_epochs, a=0)
 
-    new_inpt = torch.tensor([[2.0, 2.0]])
-    new_inpt = new_inpt.reshape((-1, 2))
-    expected_gt = torch.tensor([[4.0, 4.0]]).reshape((-1, 2))
+    moe.eval()
+    new_inpt = torch.tensor(X_train[0]).reshape((-1, 2))
+    expected_gt = torch.tensor(Y_train[0]).reshape((-1, 2))
     
     moe = to_cuda(moe)
     X = to_cuda(X)
@@ -214,7 +214,7 @@ def test_synthetic_overfitting():
 
     pred, _ = moe.forward(new_inpt)
 
-    assert torch.allclose(pred[0], expected_gt, atol=0.5), f"{pred} is not 4"
+    assert torch.allclose(pred[0], expected_gt, atol=0.1), f"{pred} is not f{expected_gt} for {new_inpt}"
 
 def test_router_collapse():
     X = torch.randn((B, S, D))
