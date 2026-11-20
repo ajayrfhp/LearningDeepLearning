@@ -94,8 +94,6 @@ class ShazeerMOE(nn.Module):
         self.experts_up = nn.Parameter(torch.randn((N, D_in, H))/ math.sqrt(D_in), requires_grad=True)
         self.experts_down = nn.Parameter(torch.randn((N, H, D_out))/ math.sqrt(D_in), requires_grad=True)
 
-        self.bias1 = nn.Parameter(torch.randn((N, ), requires_grad=True))
-        self.bias2 = nn.Parameter(torch.randn((N, ), requires_grad=True))
 
         self.noisy_gating = NoisyTopKGating(D_in, N, K, noise_penalty)
 
@@ -108,8 +106,8 @@ class ShazeerMOE(nn.Module):
 
         assert KI.shape == (M, K)
 
-        EK_UP = self.experts_up[KI] + self.bias1
-        EK_DOWN = self.experts_down[KI] + self.bias2
+        EK_UP = self.experts_up[KI]
+        EK_DOWN = self.experts_down[KI]
 
         # N gets replaced with M, K 
 
